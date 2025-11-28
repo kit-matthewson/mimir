@@ -33,6 +33,11 @@ jobs:
     - name: Build Documentation
       run: cargo doc --no-deps --document-private-items
 
+    - name: Add index.html Redirect
+      run: |
+        CRATE_NAME=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name')
+        echo "<meta http-equiv=\"refresh\" content=\"0; url=$CRATE_NAME\">" > target/doc/index.html
+
     - name: Upload Documentation Artifact
       uses: actions/upload-pages-artifact@v3
       with:
