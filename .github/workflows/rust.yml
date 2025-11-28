@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ "master" ]
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -24,3 +29,25 @@ jobs:
 
     - name: Run Tests
       run: cargo test --verbose
+
+    - name: Build Documentation
+      run: cargo doc --no-deps --document-private-items
+
+    - name: Upload Documentation Artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: target/doc
+        
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
