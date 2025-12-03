@@ -3,5 +3,10 @@ name = "mimir"
 version = "0.1.0"
 edition = "2024"
 
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false
+features = ["precommit-hook", "run-cargo-test", "run-cargo-clippy"]
+
 [dependencies]
 nom = "8.0.0"
