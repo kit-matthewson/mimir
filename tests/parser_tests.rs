@@ -264,8 +264,12 @@ fn test_fact() {
 
 #[test]
 fn test_files() {
-    // Get all files in the tests/prolog_files directory
-    let paths = std::fs::read_dir("tests\\prolog_files").unwrap();
+    // Get path to tests/prolog_files
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .expect("CARGO_MANIFEST_DIR should be set by Cargo");
+    let test_dir = std::path::Path::new(&manifest_dir).join("tests/prolog_files");
+
+    let paths = std::fs::read_dir(&test_dir).unwrap();
 
     for path in paths {
         let path = path.unwrap().path();
