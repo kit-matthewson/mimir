@@ -1,7 +1,7 @@
 //! Parser implementation for Mini-Prolog.
 //!
 //! Uses the [`nom`] crate to parse Mini-Prolog syntax into an AST defined in the `ast` module.
-//! Because 
+//! Because
 use super::ast;
 
 use nom::{
@@ -262,4 +262,9 @@ pub fn fact(input: &str) -> IResult<&str, ast::Clause> {
     let (input, _) = ws(tag(".")).parse(input)?;
 
     Ok((input, ast::Clause::fact(head)))
+}
+
+/// Parses a program, a series of clauses and facts.
+pub fn program(input: &str) -> IResult<&str, Vec<ast::Clause>> {
+    many0(ws(alt((clause, fact)))).parse(input)
 }

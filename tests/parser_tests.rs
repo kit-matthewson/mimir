@@ -261,3 +261,37 @@ fn test_fact() {
     assert_eq!(parsed, expected);
     assert_eq!(remaining, "");
 }
+
+#[test]
+fn test_files() {
+    // Get all files in the tests/prolog_files directory
+    let paths = std::fs::read_dir("tests\\prolog_files").unwrap();
+
+    for path in paths {
+        let path = path.unwrap().path();
+
+        // Only attempt .pl files
+        if path.extension().and_then(|s| s.to_str()) == Some("pl") {
+            // Get contents and attempt to parse
+            let content = std::fs::read_to_string(&path).unwrap();
+            let res = program(&content);
+
+            assert!(
+                res.is_ok(),
+                "Failed to parse file {:?}: {:?}",
+                path,
+                res.err()
+            );
+
+            // Check that the entire input was consumed
+            let (remaining, _) = res.unwrap();
+
+            assert!(
+                remaining.trim().is_empty(),
+                "Did not consume entire input for file {:?}. Remaining: {:?}",
+                path,
+                remaining
+            );
+        }
+    }
+}
