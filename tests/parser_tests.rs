@@ -399,7 +399,7 @@ fn test_files() {
     // Get path to tests/prolog_files
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .expect("CARGO_MANIFEST_DIR should be set by Cargo");
-    let test_dir = std::path::Path::new(&manifest_dir).join("tests\\prolog_files");
+    let test_dir = std::path::Path::new(&manifest_dir).join("tests").join("prolog_files");
 
     let paths = std::fs::read_dir(&test_dir).unwrap();
 
