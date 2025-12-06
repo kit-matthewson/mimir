@@ -14,6 +14,8 @@ pub enum Term {
     Number(i64),
     /// A variable, starting with an uppercase letter
     Variable(String),
+    /// A wildcard variable, represented by `_`
+    Wildcard,
     /// A compound term with a functor and argument list
     Compound {
         /// The functor name of the compound term
@@ -100,6 +102,7 @@ impl std::fmt::Display for Term {
 
                 write!(f, ")")
             }
+            Term::Wildcard => write!(f, "_"),
         }
     }
 }

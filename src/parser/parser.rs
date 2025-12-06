@@ -34,6 +34,16 @@ where
     delimited(multispace0, inner, multispace0)
 }
 
+/// Takes a parser and produces a new parser that also consumes a non-zero amount of leading and trailing whitespace.
+pub fn ws1<'a, O, E: nom::error::ParseError<&'a str>, F>(
+    inner: F,
+) -> impl Parser<&'a str, Output = O, Error = E>
+where
+    F: Parser<&'a str, Output = O, Error = E>,
+{
+    delimited(multispace1, inner, multispace1)
+}
+
 /// Parses the name of an atom.
 ///
 /// An atom name is a string of one or more chars, starting with a lowercase letter.
@@ -167,7 +177,13 @@ pub fn variable(input: &str) -> IResult<&str, ast::Term> {
     let (input, head) = one_of(VAR_START_CHARS).parse(input)?;
     let (input, tail) = alphanumeric0(input)?;
 
-    let var = ast::Term::var(format!("{}{}", head, tail));
+    let name = format!("{}{}", head, tail);
+
+    if name == "_" {
+        return Ok((input, ast::Term::Wildcard));
+    }
+
+    let var = ast::Term::var(name);
 
     Ok((input, var))
 }
@@ -211,12 +227,99 @@ pub fn compound(input: &str) -> IResult<&str, ast::Term> {
 ///```
 pub fn term(input: &str) -> IResult<&str, ast::Term> {
     // Compound has to be checked before atom, because compound has an atom as a prefix
-    alt((compound, atom, quoted_atom, variable, number)).parse(input)
+    alt((compound, atom, quoted_atom, variable, number, list)).parse(input)
+}
+
+/// Parses a term that can only appear on the right-hand side of a clause.
+///
+/// These are binary operations like equality, arithmetic, and comparisons.
+/// They are mapped to arity-2 compounds with specific functor names.
+///
+/// # Example
+/// ```
+/// # use mimir::parser::rhs_term;
+/// # use mimir::parser::ast::Term;
+/// let (_, t) = rhs_term("X \\= Y").unwrap();
+/// assert_eq!(t, Term::compound("not_equal", vec![Term::var("X"), Term::var("Y")]));
+///
+/// let (_, t) = rhs_term("A = B + C").unwrap();
+/// assert_eq!(t, Term::compound("equal", vec![Term::var("A"), Term::compound("add", vec![Term::var("B"), Term::var("C")])]));
+/// ```
+/// # TODO
+/// - Does not handle operator precedence or parentheses.
+/// - Accepts statements such as `A = B = C`, which may not be desired.
+pub fn rhs_term(input: &str) -> IResult<&str, ast::Term> {
+    // A dict of operators and their corresponding functor names
+    let operators = vec![
+        // Equality
+        (r"\=", "not_equal"),
+        ("=", "equal"),
+        // Arithmetic
+        ("+", "add"),
+        ("-", "subtract"),
+        ("*", "multiply"),
+        ("/", "divide"),
+        // Comparisons
+        (">", "greater_than"),
+        ("<", "less_than"),
+        (">=", "greater_than_equal"),
+        ("=<", "less_than_equal"),
+    ];
+
+    for (op, functor) in operators {
+        // Parse the operator with surrounding whitespace
+        let op_parser = ws(tag::<&str, &str, Error<_>>(op));
+
+        let mut parser = (term, op_parser, rhs_term);
+
+        if let Ok((input, parsed)) = parser.parse(input) {
+            let (left, _, right) = parsed;
+            let term = ast::Term::compound(functor.to_string(), vec![left, right]);
+            return Ok((input, term));
+        }
+    }
+
+    // Try to parse a normal term if no operator matched
+    term(input)
+}
+
+/// Parses a list.
+///
+/// Lists can contain elements seperated by commas or be for pattern matching, with variables separated by `|`.
+/// Lists are converted into nested `cons/2` compounds ending with the `nil/0` atom.
+pub fn list(input: &str) -> IResult<&str, ast::Term> {
+    // [a, b, c]
+    let comma_list = separated_list0(tag(","), ws(term));
+
+    // [X, Y | Z]
+    // [X, Y | [a, b, c]]
+    let pattern_list =  separated_pair(
+        separated_list1(tag(","), ws(term)),
+        ws(tag("|")),
+        alt((
+            delimited(tag("["), separated_list0(tag(","), ws(term)), tag("]")),
+            term.map(|t| vec![t]),
+        )),
+    )
+    .map(|(mut head, mut tail)| {
+        head.append(&mut tail);
+        head
+    });
+
+    let (input, elements) = delimited(tag("["), alt((pattern_list, comma_list)), tag("]")).parse(input)?;
+
+    // Convert to nested cons/2 compounds ending with nil/0
+    let mut list_term = ast::Term::atom("nil");
+    for element in elements.into_iter().rev() {
+        list_term = ast::Term::compound("cons", vec![element, list_term]);
+    }
+
+    Ok((input, list_term))
 }
 
 /// Parses a clause.
 ///
-/// A clause has a head (a compound) and an optional body (a list of terms).
+/// A clause has a head (a compound) and a body (a list of terms).
 /// The head and body are separated by ':-', and the body terms are separated by commas.
 /// The clause ends with a period.
 ///
@@ -238,7 +341,7 @@ pub fn term(input: &str) -> IResult<&str, ast::Term> {
 pub fn clause(input: &str) -> IResult<&str, ast::Clause> {
     let (input, head) = compound(input)?;
     let (input, _) = ws(tag(":-")).parse(input)?;
-    let (input, body) = separated_list0(ws(tag(",")), term).parse(input)?;
+    let (input, body) = separated_list1(ws(tag(",")), rhs_term).parse(input)?;
     let (input, _) = ws(tag(".")).parse(input)?;
 
     Ok((input, ast::Clause::rule(head, body)))

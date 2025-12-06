@@ -243,7 +243,7 @@ fn test_clause() {
     assert_eq!(parsed, expected);
     assert_eq!(remaining, "");
 
-    let input = "parent(X, Y)  :-  \n father(X, Y) ,  mother(X, Y) . ";
+    let input = "parent(X, Y)  :-  \n father(X, Y) \t,  mother(X, Y) . ";
     let (remaining, parsed) = clause(input).unwrap();
     assert_eq!(parsed, expected);
     assert_eq!(remaining, "");
@@ -263,11 +263,143 @@ fn test_fact() {
 }
 
 #[test]
+fn test_rhs_terms() {
+    let (remaining, parsed) = rhs_term("X \\= Y").unwrap();
+    assert_eq!(
+        parsed,
+        ast::Term::compound(
+            "not_equal",
+            vec![ast::Term::var("X"), ast::Term::var("Y")]
+        )
+    );
+    assert_eq!(remaining, "");
+
+    let (remaining, parsed) = rhs_term("A = B").unwrap();
+    assert_eq!(
+        parsed,
+        ast::Term::compound("equal", vec![ast::Term::var("A"), ast::Term::var("B")])
+    );
+    assert_eq!(remaining, "");
+
+    let (remaining, parsed) = rhs_term("X =< Y").unwrap();
+    assert_eq!(
+        parsed,
+        ast::Term::compound(
+            "less_than_equal",
+            vec![ast::Term::var("X"), ast::Term::var("Y")]
+        )
+    );
+    assert_eq!(remaining, "");
+}
+
+#[test]
+fn test_nested_rhs_terms() {
+    let (remaining, parsed) = rhs_term("A = B + C").unwrap();
+    assert_eq!(
+        parsed,
+        ast::Term::compound(
+            "equal",
+            vec![
+                ast::Term::var("A"),
+                ast::Term::compound(
+                    "add",
+                    vec![ast::Term::var("B"), ast::Term::var("C")]
+                )
+            ]
+        )
+    );
+    assert_eq!(remaining, "");
+}
+
+#[test]
+fn test_clause_with_rhs_terms() {
+    let input = "sibling(X, Y) :- parent(Z, X), parent(Z, Y), X \\= Y.";
+    let expected = ast::Clause::rule(
+        ast::Term::compound("sibling", vec![ast::Term::var("X"), ast::Term::var("Y")]),
+        vec![
+            ast::Term::compound("parent", vec![ast::Term::var("Z"), ast::Term::var("X")]),
+            ast::Term::compound("parent", vec![ast::Term::var("Z"), ast::Term::var("Y")]),
+            ast::Term::compound(
+                "not_equal",
+                vec![ast::Term::var("X"), ast::Term::var("Y")],
+            ),
+        ],
+    );
+
+    let (remaining, parsed) = clause(input).unwrap();
+    assert_eq!(parsed, expected);
+    assert_eq!(remaining, "");
+}
+
+#[test]
+fn test_list() {
+    let (remaining, parsed) = list("[a, b, c]").unwrap();
+    assert_eq!(
+        parsed,
+        ast::Term::compound(
+            "cons",
+            vec![
+                ast::Term::atom("a"),
+                ast::Term::compound(
+                    "cons",
+                    vec![
+                        ast::Term::atom("b"),
+                        ast::Term::compound("cons", vec![ast::Term::atom("c"), ast::Term::atom("nil")])
+                    ]
+                )
+            ]
+        )
+    );
+    assert_eq!(remaining, "");
+
+    let (remaining, parsed) = list("[X, Y | Z]").unwrap();
+    assert_eq!(
+        parsed,
+        ast::Term::compound(
+            "cons",
+            vec![
+                ast::Term::var("X"),
+                ast::Term::compound(
+                    "cons",
+                    vec![ast::Term::var("Y"),
+                    ast::Term::compound("cons", vec![ast::Term::var("Z"), ast::Term::atom("nil")])
+
+                    ]
+                )
+            ]
+        )
+    );
+    assert_eq!(remaining, "");
+
+    let (remaining, parsed) = list("[X, Y | [a, b]]").unwrap();
+    assert_eq!(
+        parsed,
+        ast::Term::compound(
+            "cons",
+            vec![
+                ast::Term::var("X"),
+                ast::Term::compound(
+                    "cons",
+                    vec![
+                        ast::Term::var("Y"),
+                        ast::Term::compound(
+                            "cons",
+                            vec![ast::Term::atom("a"), ast::Term::compound("cons", vec![ast::Term::atom("b"), ast::Term::atom("nil")])]
+                        )
+                    ]
+                )
+            ]
+        )
+    );
+    assert_eq!(remaining, "");
+}
+
+#[test]
 fn test_files() {
     // Get path to tests/prolog_files
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .expect("CARGO_MANIFEST_DIR should be set by Cargo");
-    let test_dir = std::path::Path::new(&manifest_dir).join("tests/prolog_files");
+    let test_dir = std::path::Path::new(&manifest_dir).join("tests\\prolog_files");
 
     let paths = std::fs::read_dir(&test_dir).unwrap();
 
@@ -292,10 +424,16 @@ fn test_files() {
 
             assert!(
                 remaining.trim().is_empty(),
-                "Did not consume entire input for file {:?}. Remaining: {:?}",
+                "Did not consume entire input for file {:?}.\n\nRemaining:\n{:?}\n",
                 path,
                 remaining
             );
+
+            println!("\nSuccessfully parsed file {:?}\n---", path);
+            for clause in program(&content).unwrap().1 {
+                println!("{}", clause);
+            }
+            println!("---");
         }
     }
 }
