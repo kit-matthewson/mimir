@@ -6,3 +6,7 @@
 #![allow(clippy::module_inception)]
 
 pub mod parser;
+pub mod engine;
+pub mod error;
+
+pub use error::MimirError;

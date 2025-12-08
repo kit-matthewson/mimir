@@ -1,7 +1,6 @@
 //! Parser implementation for Mini-Prolog.
 //!
 //! Uses the [`nom`] crate to parse Mini-Prolog syntax into an AST defined in the `ast` module.
-//! Because
 use super::ast;
 
 use nom::{
