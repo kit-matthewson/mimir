@@ -25,11 +25,6 @@ impl std::fmt::Display for Variable {
 pub struct Value {}
 
 impl Value {
-    /// Create a new value.
-    pub fn new() -> Self {
-        todo!()
-    }
-
     /// Create a new, uninitialised, value.
     pub fn uninitialised() -> Self {
         todo!()
@@ -258,8 +253,14 @@ impl ClauseDatabase {
 
     /// Get the clauses associated with the given functor and arity.
     /// Will return an empty list if functor/arity does not exist in the database.
-    pub fn get(&self, _functor: &String, _arity: usize) -> Vec<Clause> {
+    pub fn get(&self, _functor: &str, _arity: usize) -> Vec<Clause> {
         todo!()
+    }
+}
+
+impl Default for ClauseDatabase {
+    fn default() -> Self {
+        ClauseDatabase::new(Vec::new())
     }
 }
 
@@ -276,5 +277,11 @@ impl Equivalence {
     /// Attempt to unify two values.
     pub fn unify(&self, _val1: &Value, _val2: &Value) -> Result<(), EngineError> {
         todo!();
+    }
+}
+
+impl Default for Equivalence {
+    fn default() -> Self {
+        Equivalence::new()
     }
 }

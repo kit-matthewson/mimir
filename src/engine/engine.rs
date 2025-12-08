@@ -63,20 +63,20 @@ impl Engine {
                         goal_stack.push(clause.body.clone());
 
                         for clause in clauses.iter().rev() {
-                            let clause_env = Environment::from_clause(&clause, &env)
+                            let clause_env = Environment::from_clause(clause, &env)
                                 .expect("Could not construct environment");
 
                             let choice = Choice::new(
                                 clause.body.clone(),
                                 clause_env,
-                                equiv.clone(),
+                                equiv,
                                 goal_stack.clone(),
                             );
 
                             choice_stack.push(choice);
                         }
 
-                        env = Environment::from_clause(&clause, &env)
+                        env = Environment::from_clause(clause, &env)
                             .expect("Could not construct environment");
                         goal_stack.push(clause.body.clone());
                     }
