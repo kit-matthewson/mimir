@@ -292,7 +292,7 @@ pub fn list(input: &str) -> IResult<&str, ast::Term> {
 
     // [X, Y | Z]
     // [X, Y | [a, b, c]]
-    let pattern_list =  separated_pair(
+    let pattern_list = separated_pair(
         separated_list1(tag(","), ws(term)),
         ws(tag("|")),
         alt((
@@ -305,7 +305,8 @@ pub fn list(input: &str) -> IResult<&str, ast::Term> {
         head
     });
 
-    let (input, elements) = delimited(tag("["), alt((pattern_list, comma_list)), tag("]")).parse(input)?;
+    let (input, elements) =
+        delimited(tag("["), alt((pattern_list, comma_list)), tag("]")).parse(input)?;
 
     // Convert to nested cons/2 compounds ending with nil/0
     let mut list_term = ast::Term::atom("nil");

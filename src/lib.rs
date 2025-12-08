@@ -5,8 +5,8 @@
 #![warn(missing_docs)]
 #![allow(clippy::module_inception)]
 
-pub mod parser;
 pub mod engine;
 pub mod error;
+pub mod parser;
 
 pub use error::MimirError;

@@ -86,7 +86,9 @@ impl Engine {
                         let val1 = env.get(&var1)?;
                         let val2 = env.get(&var2)?;
 
-                        if let Some(num1) = val1.number() && let Some(num2) = val2.number() {
+                        if let Some(num1) = val1.number()
+                            && let Some(num2) = val2.number()
+                        {
                             if !op.evaluate(num1, num2) {
                                 goal_stack.push(Goal::Bool(false));
                             }

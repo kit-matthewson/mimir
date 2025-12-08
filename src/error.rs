@@ -22,7 +22,7 @@ pub enum EngineError {
     #[error("undefined variable: '{0}'")]
     UndefinedVar(Variable),
     /// When an unexpected number of parameters is given for a clause.
-    /// 
+    ///
     /// `UnexpectedParamNum(expected, got)`
     #[error("unexpected number of params: expected {0}, got {1}")]
     UnexpectedParamNum(usize, usize),

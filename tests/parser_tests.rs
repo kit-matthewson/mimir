@@ -267,10 +267,7 @@ fn test_rhs_terms() {
     let (remaining, parsed) = rhs_term("X \\= Y").unwrap();
     assert_eq!(
         parsed,
-        ast::Term::compound(
-            "not_equal",
-            vec![ast::Term::var("X"), ast::Term::var("Y")]
-        )
+        ast::Term::compound("not_equal", vec![ast::Term::var("X"), ast::Term::var("Y")])
     );
     assert_eq!(remaining, "");
 
@@ -301,10 +298,7 @@ fn test_nested_rhs_terms() {
             "equal",
             vec![
                 ast::Term::var("A"),
-                ast::Term::compound(
-                    "add",
-                    vec![ast::Term::var("B"), ast::Term::var("C")]
-                )
+                ast::Term::compound("add", vec![ast::Term::var("B"), ast::Term::var("C")])
             ]
         )
     );
@@ -319,10 +313,7 @@ fn test_clause_with_rhs_terms() {
         vec![
             ast::Term::compound("parent", vec![ast::Term::var("Z"), ast::Term::var("X")]),
             ast::Term::compound("parent", vec![ast::Term::var("Z"), ast::Term::var("Y")]),
-            ast::Term::compound(
-                "not_equal",
-                vec![ast::Term::var("X"), ast::Term::var("Y")],
-            ),
+            ast::Term::compound("not_equal", vec![ast::Term::var("X"), ast::Term::var("Y")]),
         ],
     );
 
@@ -344,7 +335,10 @@ fn test_list() {
                     "cons",
                     vec![
                         ast::Term::atom("b"),
-                        ast::Term::compound("cons", vec![ast::Term::atom("c"), ast::Term::atom("nil")])
+                        ast::Term::compound(
+                            "cons",
+                            vec![ast::Term::atom("c"), ast::Term::atom("nil")]
+                        )
                     ]
                 )
             ]
@@ -361,9 +355,12 @@ fn test_list() {
                 ast::Term::var("X"),
                 ast::Term::compound(
                     "cons",
-                    vec![ast::Term::var("Y"),
-                    ast::Term::compound("cons", vec![ast::Term::var("Z"), ast::Term::atom("nil")])
-
+                    vec![
+                        ast::Term::var("Y"),
+                        ast::Term::compound(
+                            "cons",
+                            vec![ast::Term::var("Z"), ast::Term::atom("nil")]
+                        )
                     ]
                 )
             ]
@@ -384,7 +381,13 @@ fn test_list() {
                         ast::Term::var("Y"),
                         ast::Term::compound(
                             "cons",
-                            vec![ast::Term::atom("a"), ast::Term::compound("cons", vec![ast::Term::atom("b"), ast::Term::atom("nil")])]
+                            vec![
+                                ast::Term::atom("a"),
+                                ast::Term::compound(
+                                    "cons",
+                                    vec![ast::Term::atom("b"), ast::Term::atom("nil")]
+                                )
+                            ]
                         )
                     ]
                 )
@@ -397,9 +400,11 @@ fn test_list() {
 #[test]
 fn test_files() {
     // Get path to tests/prolog_files
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR should be set by Cargo");
-    let test_dir = std::path::Path::new(&manifest_dir).join("tests").join("prolog_files");
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR should be set by Cargo");
+    let test_dir = std::path::Path::new(&manifest_dir)
+        .join("tests")
+        .join("prolog_files");
 
     let paths = std::fs::read_dir(&test_dir).unwrap();
 
