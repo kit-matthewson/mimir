@@ -21,11 +21,8 @@ pub enum EngineError {
     ClauseNotFound(String, usize),
     #[error("undefined variable: '{0}'")]
     UndefinedVar(Variable),
-    /// When an unexpected number of parameters is given for a clause.
-    ///
-    /// `UnexpectedParamNum(expected, got)`
-    #[error("unexpected number of params: expected {0}, got {1}")]
-    UnexpectedParamNum(usize, usize),
-    #[error("variable is not a number")]
-    NotANumber,
+    #[error("unexpected number of params: expected {expected}, got {got}")]
+    UnexpectedParamNum { expected: usize, got: usize },
+    #[error("variable '{0}' is not a number")]
+    NotANumber(Variable),
 }

@@ -203,10 +203,10 @@ impl Environment {
     /// Local variables to the clause are assigned `None`.
     pub fn new(symbol: &Symbol, arguments: &Vec<Value>) -> Result<Self, EngineError> {
         if symbol.parameters.len() != arguments.len() {
-            return Err(EngineError::UnexpectedParamNum(
-                symbol.parameters.len(),
-                arguments.len(),
-            ));
+            return Err(EngineError::UnexpectedParamNum {
+                expected: symbol.parameters.len(),
+                got: arguments.len(),
+            });
         }
 
         let mut mapping = HashMap::with_capacity(symbol.parameters.len() + symbol.local_vars.len());

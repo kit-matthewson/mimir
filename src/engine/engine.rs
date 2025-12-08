@@ -20,7 +20,7 @@ impl Engine {
     /// Execute the engine on the given query.
     pub fn execute(&self, query: Symbol) -> Result<Vec<Environment>, EngineError> {
         let mut env = Environment::new(&query, &Vec::new())
-            .expect("Could not construct environment for query");
+            .expect("could not construct environment for query");
         let mut equiv = Equivalence::new();
         let mut goal_stack: Vec<Goal> = Vec::new();
         let mut choice_stack: Vec<Choice> = Vec::new();
@@ -64,7 +64,7 @@ impl Engine {
 
                         for clause in clauses.iter().rev() {
                             let clause_env = Environment::from_clause(clause, &env)
-                                .expect("Could not construct environment");
+                                .expect("could not construct environment");
 
                             let choice = Choice::new(
                                 clause.body.clone(),
@@ -77,7 +77,7 @@ impl Engine {
                         }
 
                         env = Environment::from_clause(clause, &env)
-                            .expect("Could not construct environment");
+                            .expect("could not construct environment");
                         goal_stack.push(clause.body.clone());
                     }
                     Goal::Restore(new_env) => env = new_env,
@@ -86,14 +86,20 @@ impl Engine {
                         let val1 = env.get(&var1)?;
                         let val2 = env.get(&var2)?;
 
-                        if let Some(num1) = val1.number()
-                            && let Some(num2) = val2.number()
-                        {
-                            if !op.evaluate(num1, num2) {
-                                goal_stack.push(Goal::Bool(false));
-                            }
+                        let num1 = if let Some(num) = val1.number() {
+                            num
                         } else {
-                            return Err(EngineError::NotANumber);
+                            return Err(EngineError::NotANumber(var1));
+                        };
+
+                        let num2 = if let Some(num) = val2.number() {
+                            num
+                        } else {
+                            return Err(EngineError::NotANumber(var2));
+                        };
+
+                        if !op.evaluate(num1, num2) {
+                            goal_stack.push(Goal::Bool(false));
                         }
                     }
 
