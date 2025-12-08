@@ -22,22 +22,23 @@ impl std::fmt::Display for Variable {
 ///
 /// This may be uninitialised.
 #[derive(Clone)]
-pub struct Value {}
+pub enum Value {
+    /// An i64 'Number' value.
+    Number(i64),
+    /// A ground term. A ground term is a term that does not contain any variables.
+    /// Essentially, a functor a list of argument values.
+    Ground(String, Vec<Value>),
+    /// A placeholder value.
+    None,
+}
 
 impl Value {
-    /// Create a new, uninitialised, value.
-    pub fn uninitialised() -> Self {
-        todo!()
-    }
-
-    /// Create a new value from a number.
-    pub fn from_number(_n: i64) -> Self {
-        todo!()
-    }
-
     /// Attempt to get a number from this value.
     pub fn number(&self) -> Option<i64> {
-        todo!();
+        match self {
+            Value::Number(n) => Some(*n),
+            _ => None,
+        }
     }
 }
 
@@ -101,7 +102,7 @@ impl RHSTerm {
     /// Evaluate this term to a value given the environment
     pub fn evaluate(&self, _env: &Environment) -> Value {
         match self {
-            RHSTerm::Number(n) => Value::from_number(*n),
+            RHSTerm::Number(n) => Value::Number(*n),
             RHSTerm::Expression(_expr) => {
                 todo!()
             }
@@ -137,23 +138,36 @@ pub enum Goal {
         /// The variable arguments of the clause
         arguments: Vec<Variable>,
     },
-    /// A special goal that restores a previous environment
+    /// A special goal that restores a previous environment.
     Restore(Environment),
-    /// Relational statements for numbers
+    /// Relational statements for numbers.
     Relation(Variable, Variable, RelationalOp),
-    /// Make a variable equivilant to some term
+    /// Make a variable equivilant to some term.
     Assign(Variable, RHSTerm),
-    /// A boolean goal: true always succeeds, false always fails
+    /// A boolean goal: true always succeeds, false always fails.
     Bool(bool),
 }
 
 /// A clause with head and body.
 ///
 /// The body is a single `Goal`, which can be a conjunction or disjunction.
+#[derive(Clone)]
 #[allow(missing_docs)]
 pub struct Clause {
     pub head: Symbol,
     pub body: Goal,
+}
+
+impl Clause {
+    /// Gets the arity (number of arguments) of this clause.
+    pub fn arity(&self) -> usize {
+        self.head.parameters.len()
+    }
+
+    /// Gets the functor (name) of this clause.
+    pub fn functor(&self) -> &str {
+        &self.head.functor
+    }
 }
 
 /// A choice contains the information needed to recover from a backtrack.
@@ -202,7 +216,7 @@ impl Environment {
         }
 
         for var in symbol.local_vars.iter() {
-            mapping.insert(var.clone(), Value::uninitialised());
+            mapping.insert(var.clone(), Value::None);
         }
 
         Ok(Environment { mapping })
@@ -213,14 +227,14 @@ impl Environment {
         self.mapping.clear();
     }
 
-    /// Check if this environment is empty
+    /// Check if this environment is empty.
     pub fn is_empty(&self) -> bool {
         self.mapping.is_empty()
     }
 
-    /// Create a new environment from a given clause and existing environent
+    /// Create a new environment from a given clause and existing environent.
     ///
-    /// The other environment is used to get paramater values
+    /// The other environment is used to get paramater values.
     pub fn from_clause(clause: &Clause, env: &Environment) -> Result<Self, EngineError> {
         let clause_args = clause
             .head
@@ -236,6 +250,7 @@ impl Environment {
     }
 
     /// Get the value of the given variable.
+    /// This actually returns the value of the set representative.
     pub fn get(&self, _variable: &Variable) -> Result<Value, EngineError> {
         todo!()
     }
@@ -243,18 +258,36 @@ impl Environment {
 
 /// The Clause Database provides a mapping from clause names and arities to a list clauses.
 /// Clauses are returned in the same order that they are defined in the program.
-pub struct ClauseDatabase {}
+pub struct ClauseDatabase {
+    clauses: HashMap<(String, usize), Vec<Clause>>,
+}
 
 impl ClauseDatabase {
     /// Create a new clause database.
-    pub fn new(_program: Vec<Clause>) -> Self {
-        todo!()
+    /// Clauses will always be returned in the same order as they appear in `program`.
+    pub fn new(program: Vec<Clause>) -> Self {
+        let mut clauses: HashMap<(String, usize), Vec<Clause>> = HashMap::new();
+
+        for clause in program {
+            let key = (clause.functor().to_string(), clause.arity());
+
+            if let Some(vec) = clauses.get_mut(&key) {
+                vec.push(clause);
+            } else {
+                clauses.insert(key, vec![clause]);
+            }
+        }
+
+        ClauseDatabase { clauses }
     }
 
     /// Get the clauses associated with the given functor and arity.
     /// Will return an empty list if functor/arity does not exist in the database.
-    pub fn get(&self, _functor: &str, _arity: usize) -> Vec<Clause> {
-        todo!()
+    pub fn get(&self, functor: &str, arity: usize) -> Vec<Clause> {
+        self.clauses
+            .get(&(functor.to_string(), arity))
+            .unwrap_or(&Vec::new())
+            .to_vec()
     }
 }
 
