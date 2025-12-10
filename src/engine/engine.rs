@@ -14,6 +14,7 @@ struct State {
     equiv: Equivalence,
     goal_stack: Vec<Goal>,
     choice_stack: Vec<Choice>,
+    placeholder_gen: PlaceholderGenerator,
 }
 
 impl State {
@@ -35,11 +36,14 @@ impl Engine {
 
     /// Execute the engine on the given query.
     pub fn execute(&self, query: Symbol) -> Result<Vec<Environment>, EngineError> {
+        let mut placeholder_gen = PlaceholderGenerator::new();
+
         let mut state = State {
-            env: Environment::new(&query, &Vec::new())?,
+            env: Environment::new(&query, &Vec::new(), &mut placeholder_gen)?,
             equiv: Equivalence::new(),
             goal_stack: Vec::new(),
             choice_stack: Vec::new(),
+            placeholder_gen,
         };
 
         let mut solutions = Vec::new();
@@ -74,7 +78,7 @@ impl Engine {
                 let choice = Choice::new(
                     *goal2,
                     state.env.clone(),
-                    state.equiv,
+                    state.equiv.clone(),
                     state.goal_stack.clone(),
                 );
 
@@ -83,8 +87,8 @@ impl Engine {
             }
 
             Goal::Equivalence(var1, var2) => {
-                let val1 = state.env.get(&var1)?;
-                let val2 = state.env.get(&var2)?;
+                let val1 = state.env.get(&var1, &state.equiv)?;
+                let val2 = state.env.get(&var2, &state.equiv)?;
 
                 if state.equiv.unify(&val1, &val2).is_err() {
                     state.goal_stack.push(Goal::Bool(false));
@@ -102,8 +106,8 @@ impl Engine {
             }
 
             Goal::Assign(var, rhs) => {
-                let val1 = state.env.get(&var)?;
-                let val2 = rhs.evaluate(&state.env)?;
+                let val1 = state.env.get(&var, &state.equiv)?;
+                let val2 = rhs.evaluate(&state.env, &state.equiv)?;
                 state.equiv.unify(&val1, &val2)?;
             }
 
@@ -128,8 +132,8 @@ impl Engine {
         var2: Variable,
         op: RelationalOp,
     ) -> Result<(), EngineError> {
-        let val1 = state.env.get(&var1)?;
-        let val2 = state.env.get(&var2)?;
+        let val1 = state.env.get(&var1, &state.equiv)?;
+        let val2 = state.env.get(&var2, &state.equiv)?;
 
         // Ensure both are numbers
         let num1 = if let Some(num) = val1.number() {
@@ -170,19 +174,19 @@ impl Engine {
         state.goal_stack.push(clause.body.clone());
 
         for clause in clauses.iter().skip(1).rev() {
-            let clause_env = Environment::from_clause(clause, &state.env)?;
+            let clause_env = Environment::from_clause(clause, &state.env, &state.equiv, &mut state.placeholder_gen)?;
 
             let choice = Choice::new(
                 clause.body.clone(),
                 clause_env,
-                state.equiv,
+                state.equiv.clone(),
                 state.goal_stack.clone(),
             );
 
             state.choice_stack.push(choice);
         }
 
-        state.env = Environment::from_clause(clause, &state.env)?;
+        state.env = Environment::from_clause(clause, &state.env, &state.equiv, &mut state.placeholder_gen)?;
         state.goal_stack.push(clause.body.clone());
 
         Ok(())

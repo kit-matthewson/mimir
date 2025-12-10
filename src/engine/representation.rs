@@ -4,6 +4,11 @@ use std::collections::HashMap;
 
 use crate::error::EngineError;
 
+/// Type for placeholder value IDs
+type PlaceholderID = u32;
+/// Type of numbers
+type Number = i64;
+
 /// A reference to a variable by name.
 ///
 /// Currently stored as an owned `String`, but feel this could be optimised.
@@ -21,24 +26,60 @@ impl std::fmt::Display for Variable {
 /// The value of a variable.
 ///
 /// This may be uninitialised.
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum Value {
     /// An i64 'Number' value.
-    Number(i64),
+    Number(Number),
     /// A ground term. A ground term is a term that does not contain any variables.
     /// Essentially, a functor a list of argument values.
     Ground(String, Vec<Value>),
     /// A placeholder value.
-    None,
+    Placeholder(PlaceholderID),
 }
 
 impl Value {
     /// Attempt to get a number from this value.
-    pub fn number(&self) -> Option<i64> {
+    pub fn number(&self) -> Option<Number> {
         match self {
             Value::Number(n) => Some(*n),
             _ => None,
         }
+    }
+
+    /// Attempt to get the placeholder ID of this value.
+    pub fn placeholder_id(&self) -> Option<PlaceholderID> {
+        match self {
+            Value::Placeholder(id) => Some(*id),
+            _ => None,
+        }
+    }
+}
+
+/// Manages the generation of unique placeholder values.
+pub struct PlaceholderGenerator {
+    next: PlaceholderID,
+}
+
+impl PlaceholderGenerator {
+    /// Creates a new generator for IDs starting at 0.
+    pub fn new() -> Self {
+        PlaceholderGenerator {
+            next: PlaceholderID::MIN,
+        }
+    }
+
+    /// Generates a new placeholder value with a unique ID.
+    pub fn new_placeholder(&mut self) -> Value {
+        let id = self.next;
+        self.next += 1;
+
+        Value::Placeholder(id)
+    }
+}
+
+impl Default for PlaceholderGenerator {
+    fn default() -> Self {
+        PlaceholderGenerator::new()
     }
 }
 
@@ -65,7 +106,7 @@ pub enum RelationalOp {
 
 impl RelationalOp {
     /// Use this operator to evaluate two numbers
-    pub fn evaluate(&self, a: i64, b: i64) -> bool {
+    pub fn evaluate(&self, a: Number, b: Number) -> bool {
         match self {
             RelationalOp::LessThan => a < b,
             RelationalOp::LessThanEqual => a <= b,
@@ -91,7 +132,7 @@ impl ArithmeticOp {
     /// Evaluates two numbers with this operator.
     /// Uses saturating addition, subtraction, and multiplication so numbers are clamped to the range of `i64`.
     /// Division by zero returns an error.
-    pub fn evaluate(&self, a: i64, b: i64) -> Result<i64, EngineError> {
+    pub fn evaluate(&self, a: Number, b: Number) -> Result<Number, EngineError> {
         match self {
             ArithmeticOp::Add => Ok(a.saturating_add(b)),
             ArithmeticOp::Subtract => Ok(a.saturating_sub(b)),
@@ -108,7 +149,7 @@ impl ArithmeticOp {
 #[derive(Clone)]
 pub enum RHSTerm {
     /// A literal number
-    Number(i64),
+    Number(Number),
     /// An arithmetic expression
     Expression(Expression),
     /// A symbol (clause head)
@@ -117,11 +158,11 @@ pub enum RHSTerm {
 
 impl RHSTerm {
     /// Evaluate this term to a value given the environment
-    pub fn evaluate(&self, env: &Environment) -> Result<Value, EngineError> {
+    pub fn evaluate(&self, env: &Environment, equiv: &Equivalence) -> Result<Value, EngineError> {
         match self {
             RHSTerm::Number(n) => Ok(Value::Number(*n)),
             RHSTerm::Expression(expr) => {
-                let result = expr.evaluate(env)?;
+                let result = expr.evaluate(env, equiv)?;
                 Ok(Value::Number(result))
             }
             RHSTerm::Symbol(sym) => {
@@ -129,7 +170,7 @@ impl RHSTerm {
                 let values = sym
                     .parameters
                     .iter()
-                    .map(|param| env.get(param))
+                    .map(|param| env.get(param, equiv))
                     .collect::<Result<Vec<Value>, EngineError>>()?;
 
                 Ok(Value::Ground(sym.functor.clone(), values))
@@ -142,7 +183,7 @@ impl RHSTerm {
 #[derive(Clone)]
 pub enum Expression {
     /// A number.
-    Num(i64),
+    Num(Number),
     /// A variable in the expression.
     Var(Variable),
     /// A binary expression with two sub-expressions and an operator.
@@ -151,11 +192,11 @@ pub enum Expression {
 
 impl Expression {
     /// Evaluate this expression to a number.
-    pub fn evaluate(&self, env: &Environment) -> Result<i64, EngineError> {
+    pub fn evaluate(&self, env: &Environment, equiv: &Equivalence) -> Result<Number, EngineError> {
         match self {
             Expression::Num(n) => Ok(*n),
             Expression::Var(var) => {
-                let val = env.get(var)?;
+                let val = env.get(var, equiv)?;
 
                 if let Some(n) = val.number() {
                     Ok(n)
@@ -165,8 +206,8 @@ impl Expression {
             }
 
             Expression::Expr(expr1, expr2, op) => {
-                let a = expr1.evaluate(env)?;
-                let b = expr2.evaluate(env)?;
+                let a = expr1.evaluate(env, equiv)?;
+                let b = expr2.evaluate(env, equiv)?;
                 let result = op.evaluate(a, b)?;
 
                 Ok(result)
@@ -254,7 +295,11 @@ impl Environment {
     /// Create an environemt for a symbol with the given arguments.
     ///
     /// Local variables to the clause are assigned `None`.
-    pub fn new(symbol: &Symbol, arguments: &Vec<Value>) -> Result<Self, EngineError> {
+    pub fn new(
+        symbol: &Symbol,
+        arguments: &Vec<Value>,
+        placeholder_gen: &mut PlaceholderGenerator,
+    ) -> Result<Self, EngineError> {
         if symbol.parameters.len() != arguments.len() {
             return Err(EngineError::UnexpectedParamNum {
                 expected: symbol.parameters.len(),
@@ -269,7 +314,7 @@ impl Environment {
         }
 
         for var in symbol.local_vars.iter() {
-            mapping.insert(var.clone(), Value::None);
+            mapping.insert(var.clone(), placeholder_gen.new_placeholder());
         }
 
         Ok(Environment { mapping })
@@ -288,24 +333,34 @@ impl Environment {
     /// Create a new environment from a given clause and existing environent.
     ///
     /// The other environment is used to get paramater values.
-    pub fn from_clause(clause: &Clause, env: &Environment) -> Result<Self, EngineError> {
+    pub fn from_clause(
+        clause: &Clause,
+        env: &Environment,
+        equiv: &Equivalence,
+        placeholder_gen: &mut PlaceholderGenerator,
+    ) -> Result<Self, EngineError> {
         let clause_args = clause
             .head
             .parameters
             .iter()
-            .map(|var| env.get(var))
+            .map(|var| env.get(var, equiv))
             .collect();
 
         match clause_args {
-            Ok(args) => Environment::new(&clause.head, &args),
+            Ok(args) => Environment::new(&clause.head, &args, placeholder_gen),
             Err(err) => Err(err),
         }
     }
 
     /// Get the value of the given variable.
-    /// This actually returns the value of the set representative.
-    pub fn get(&self, _variable: &Variable) -> Result<Value, EngineError> {
-        todo!()
+    /// This actually returns the set representative of the variable's value.
+    pub fn get(&self, variable: &Variable, equiv: &Equivalence) -> Result<Value, EngineError> {
+        let value = self
+            .mapping
+            .get(variable)
+            .ok_or_else(|| EngineError::UndefinedVar(variable.clone()))?;
+
+        equiv.set_representative(value)
     }
 }
 
@@ -351,18 +406,66 @@ impl Default for ClauseDatabase {
 }
 
 /// Stores the equivalence relations for variables in the environment.
-#[derive(Clone, Copy)]
-pub struct Equivalence {}
+#[derive(Clone)]
+pub struct Equivalence {
+    equiv: HashMap<Value, Value>,
+}
 
 impl Equivalence {
     /// Create a new equivalence.
     pub fn new() -> Self {
-        todo!();
+        Equivalence {
+            equiv: HashMap::new(),
+        }
+    }
+
+    /// Get the set representative of a value.
+    pub fn set_representative(&self, value: &Value) -> Result<Value, EngineError> {
+        if let Some(value) = self.equiv.get(value) {
+            self.set_representative(value)
+        } else {
+            Ok(value.clone())
+        }
     }
 
     /// Attempt to unify two values.
-    pub fn unify(&self, _val1: &Value, _val2: &Value) -> Result<(), EngineError> {
-        todo!();
+    pub fn unify(&mut self, val1: &Value, val2: &Value) -> Result<(), EngineError> {
+        if val1 == val2 {
+            return Ok(());
+        }
+
+        // A placeholder (unassigned) value always unifies
+        if matches!(val1, Value::Placeholder(_)) {
+            self.equiv
+                .insert(val1.clone(), val2.clone())
+                .expect("could not insert relation");
+
+            return Ok(());
+        } else if matches!(val2, Value::Placeholder(_)) {
+            self.equiv
+                .insert(val2.clone(), val1.clone())
+                .expect("could not insert relation");
+
+            return Ok(());
+        }
+
+        // For a compound, we unify each term
+        if let Value::Ground(functor1, args1) = val1
+            && let Value::Ground(functor2, args2) = val2
+        {
+            if functor1 != functor2 || args1.len() != args2.len() {
+                return Err(EngineError::CannotUnifyTerms(val1.clone(), val2.clone()));
+            }
+
+            for (arg1, arg2) in args1.iter().zip(args2.iter()) {
+                self.unify(arg1, arg2)?;
+            }
+
+            return Ok(());
+        }
+
+        // Otherwise, cannot unify
+        Err(EngineError::CannotUnifyTerms(val1.clone(), val2.clone()))
     }
 }
 

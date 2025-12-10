@@ -27,4 +27,8 @@ pub enum EngineError {
     NotANumber(Variable),
     #[error("attempted to divide by zero")]
     DivByZero,
+    #[error("attempted to find set representative of non-placeholder value '{0:?}'")]
+    SetReprNonPlaceholder(Value),
+    #[error("cannot unify the terms '{0:?}' and '{1:?}'")]
+    CannotUnifyTerms(Value, Value),
 }
