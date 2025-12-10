@@ -103,8 +103,7 @@ impl Engine {
 
             Goal::Assign(var, rhs) => {
                 let val1 = state.env.get(&var)?;
-                let val2 = rhs.evaluate(&state.env);
-
+                let val2 = rhs.evaluate(&state.env)?;
                 state.equiv.unify(&val1, &val2)?;
             }
 

@@ -25,4 +25,6 @@ pub enum EngineError {
     UnexpectedParamNum { expected: usize, got: usize },
     #[error("variable '{0}' is not a number")]
     NotANumber(Variable),
+    #[error("attempted to divide by zero")]
+    DivByZero,
 }

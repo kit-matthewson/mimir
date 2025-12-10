@@ -87,6 +87,23 @@ pub enum ArithmeticOp {
     Divide,
 }
 
+impl ArithmeticOp {
+    /// Evaluates two numbers with this operator.
+    /// Uses saturating addition, subtraction, and multiplication so numbers are clamped to the range of `i64`.
+    /// Division by zero returns an error.
+    pub fn evaluate(&self, a: i64, b: i64) -> Result<i64, EngineError> {
+        match self {
+            ArithmeticOp::Add => Ok(a.saturating_add(b)),
+            ArithmeticOp::Subtract => Ok(a.saturating_sub(b)),
+            ArithmeticOp::Multiply => Ok(a.saturating_mul(b)),
+            ArithmeticOp::Divide => match a.checked_div(b) {
+                Some(n) => Ok(n),
+                None => Err(EngineError::DivByZero),
+            },
+        }
+    }
+}
+
 /// A term that can appear on the right-hand side of an assignment.
 #[derive(Clone)]
 pub enum RHSTerm {
@@ -100,14 +117,22 @@ pub enum RHSTerm {
 
 impl RHSTerm {
     /// Evaluate this term to a value given the environment
-    pub fn evaluate(&self, _env: &Environment) -> Value {
+    pub fn evaluate(&self, env: &Environment) -> Result<Value, EngineError> {
         match self {
-            RHSTerm::Number(n) => Value::Number(*n),
-            RHSTerm::Expression(_expr) => {
-                todo!()
+            RHSTerm::Number(n) => Ok(Value::Number(*n)),
+            RHSTerm::Expression(expr) => {
+                let result = expr.evaluate(env)?;
+                Ok(Value::Number(result))
             }
-            RHSTerm::Symbol(_sym) => {
-                todo!()
+            RHSTerm::Symbol(sym) => {
+                // Get the value of each parameter
+                let values = sym
+                    .parameters
+                    .iter()
+                    .map(|param| env.get(param))
+                    .collect::<Result<Vec<Value>, EngineError>>()?;
+
+                Ok(Value::Ground(sym.functor.clone(), values))
             }
         }
     }
@@ -116,10 +141,38 @@ impl RHSTerm {
 /// An arithmetic expression.
 #[derive(Clone)]
 pub enum Expression {
-    /// A variable in the expression
+    /// A number.
+    Num(i64),
+    /// A variable in the expression.
     Var(Variable),
-    /// A binary expression with two sub-expressions and an operator
+    /// A binary expression with two sub-expressions and an operator.
     Expr(Box<Expression>, Box<Expression>, ArithmeticOp),
+}
+
+impl Expression {
+    /// Evaluate this expression to a number.
+    pub fn evaluate(&self, env: &Environment) -> Result<i64, EngineError> {
+        match self {
+            Expression::Num(n) => Ok(*n),
+            Expression::Var(var) => {
+                let val = env.get(var)?;
+
+                if let Some(n) = val.number() {
+                    return Ok(n);
+                } else {
+                    return Err(EngineError::NotANumber(var.clone()));
+                }
+            }
+
+            Expression::Expr(expr1, expr2, op) => {
+                let a = expr1.evaluate(env)?;
+                let b = expr2.evaluate(env)?;
+                let result = op.evaluate(a, b)?;
+
+                return Ok(result);
+            }
+        }
+    }
 }
 
 /// Possible goals. These act as the body of clauses and the elements of the goal stack.
