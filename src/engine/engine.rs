@@ -174,7 +174,12 @@ impl Engine {
         state.goal_stack.push(clause.body.clone());
 
         for clause in clauses.iter().skip(1).rev() {
-            let clause_env = Environment::from_clause(clause, &state.env, &state.equiv, &mut state.placeholder_gen)?;
+            let clause_env = Environment::from_clause(
+                clause,
+                &state.env,
+                &state.equiv,
+                &mut state.placeholder_gen,
+            )?;
 
             let choice = Choice::new(
                 clause.body.clone(),
@@ -186,7 +191,8 @@ impl Engine {
             state.choice_stack.push(choice);
         }
 
-        state.env = Environment::from_clause(clause, &state.env, &state.equiv, &mut state.placeholder_gen)?;
+        state.env =
+            Environment::from_clause(clause, &state.env, &state.equiv, &mut state.placeholder_gen)?;
         state.goal_stack.push(clause.body.clone());
 
         Ok(())
