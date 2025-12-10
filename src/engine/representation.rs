@@ -158,9 +158,9 @@ impl Expression {
                 let val = env.get(var)?;
 
                 if let Some(n) = val.number() {
-                    return Ok(n);
+                    Ok(n)
                 } else {
-                    return Err(EngineError::NotANumber(var.clone()));
+                    Err(EngineError::NotANumber(var.clone()))
                 }
             }
 
@@ -169,7 +169,7 @@ impl Expression {
                 let b = expr2.evaluate(env)?;
                 let result = op.evaluate(a, b)?;
 
-                return Ok(result);
+                Ok(result)
             }
         }
     }
