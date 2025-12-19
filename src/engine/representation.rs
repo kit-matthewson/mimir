@@ -135,15 +135,25 @@ pub struct Symbol {
 
 impl Symbol {
     /// Create a new symbol.
-    pub fn new<T: Into<String>, V: Into<Variable>>(
+    pub fn new<T: Into<String>, V1: Into<Vec<Variable>>, V2: Into<Vec<Variable>>>(
         functor: T,
-        parameters: Vec<V>,
-        local_vars: Vec<V>,
+        parameters: V1,
+        local_vars: V2,
     ) -> Self {
         Symbol {
             functor: functor.into(),
-            parameters: parameters.into_iter().map(|v| v.into()).collect(),
-            local_vars: local_vars.into_iter().map(|v| v.into()).collect(),
+            parameters: parameters.into(),
+            local_vars: local_vars.into(),
+        }
+    }
+
+    /// Helper for creating symbols for facts.
+    /// Facts have no local variables.
+    pub fn fact<T: Into<String>, V: Into<Vec<Variable>>>(functor: T, parameters: V) -> Self {
+        Symbol {
+            functor: functor.into(),
+            parameters: parameters.into(),
+            local_vars: Vec::new(),
         }
     }
 }
@@ -349,6 +359,11 @@ pub struct Clause {
 }
 
 impl Clause {
+    /// Create a new clause.
+    pub fn new(head: Symbol, body: Goal) -> Self {
+        Clause { head, body }
+    }
+
     /// Gets the arity (number of arguments) of this clause.
     pub fn arity(&self) -> usize {
         self.head.parameters.len()
@@ -577,11 +592,31 @@ impl Default for Equivalence {
     }
 }
 
+/// A macro for conveniently constructing Vecs of variables
+#[macro_export]
+macro_rules! var_vec {
+    ( $($x:expr),*) => {
+        vec![$(
+            Variable::new($x),
+        )*]
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
 
     use super::*;
+
+    #[test]
+    fn test_var_creation() {
+        let vars = var_vec!["A", "B", "C"];
+
+        assert_eq!(
+            vars,
+            vec![Variable::new("A"), Variable::new("B"), Variable::new("C")]
+        )
+    }
 
     #[test]
     fn test_variable() {
@@ -591,8 +626,6 @@ mod tests {
 
         assert_eq!(a1, a2);
         assert_ne!(a1, b);
-
-        assert_eq!(a1, Variable::from("A"));
     }
 
     #[test]
@@ -652,7 +685,7 @@ mod tests {
             vec![Variable::new("X")],
         );
 
-        let sym2 = Symbol::new("functor", vec!["A", "B"], vec!["X"]);
+        let sym2 = Symbol::new("functor", var_vec!["A", "B"], var_vec!["X"]);
 
         assert_eq!(sym1.functor, "functor");
         assert_eq!(sym1.parameters, sym2.parameters);
@@ -734,7 +767,7 @@ mod tests {
         let value = term.evaluate(&env, &equiv).unwrap();
         assert_eq!(value, Value::num(15));
 
-        let symbol = Symbol::new("func", vec!["A", "B"], vec![]);
+        let symbol = Symbol::new("func", var_vec!["A", "B"], vec![]);
         let term = RHSTerm::Symbol(symbol);
         let value = term.evaluate(&env, &equiv).unwrap();
         assert_eq!(
@@ -746,7 +779,7 @@ mod tests {
     #[test]
     fn test_clause() {
         let clause = Clause {
-            head: Symbol::new("my_clause", vec!["X", "Y"], vec!["Z"]),
+            head: Symbol::new("my_clause", var_vec!["X", "Y"], var_vec!["Z"]),
             body: Goal::Bool(true),
         };
 
@@ -758,7 +791,7 @@ mod tests {
     fn test_environment() {
         let mut pgen = PlaceholderGenerator::new();
 
-        let symbol = Symbol::new("test_clause", vec!["A", "B"], vec!["X", "Y"]);
+        let symbol = Symbol::new("test_clause", var_vec!["A", "B"], var_vec!["X", "Y"]);
 
         let args = vec![Value::num(10), Value::num(20)];
         let env = Environment::for_symbol(&symbol, &args, &mut pgen).unwrap();
@@ -784,17 +817,17 @@ mod tests {
     #[test]
     fn test_clause_database() {
         let clause1 = Clause {
-            head: Symbol::new("clause", vec!["A"], vec![]),
+            head: Symbol::new("clause", var_vec!["A"], vec![]),
             body: Goal::Bool(true),
         };
 
         let clause2 = Clause {
-            head: Symbol::new("clause", vec!["A", "B"], vec![]),
+            head: Symbol::new("clause", var_vec!["A", "B"], vec![]),
             body: Goal::Bool(false),
         };
 
         let clause3 = Clause {
-            head: Symbol::new("clause", vec!["X"], vec![]),
+            head: Symbol::new("clause", var_vec!["X"], vec![]),
             body: Goal::Bool(true),
         };
 
