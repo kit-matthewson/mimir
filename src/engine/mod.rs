@@ -42,7 +42,7 @@ impl Engine {
         let mut placeholder_gen = PlaceholderGenerator::new();
 
         let mut state = State {
-            env: Environment::new(&query, &Vec::new(), &mut placeholder_gen)?,
+            env: Environment::for_symbol(&query, &Vec::new(), &mut placeholder_gen)?,
             equiv: Equivalence::new(),
             goal_stack: Vec::new(),
             choice_stack: Vec::new(),
