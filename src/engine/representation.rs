@@ -11,7 +11,7 @@ type Number = i64;
 
 /// A reference to a variable by name.
 ///
-/// Currently stored as an owned `String`, but feel this could be optimised.
+/// Currently stored as an owned `String`, but this could be optimised.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Variable {
     name: String,
@@ -25,7 +25,7 @@ impl std::fmt::Display for Variable {
 
 /// The value of a variable.
 ///
-/// This may be uninitialised.
+/// This may be an uninitialised 'placeholder' value.
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum Value {
     /// An i64 'Number' value.
@@ -56,6 +56,17 @@ impl Value {
 }
 
 /// Manages the generation of unique placeholder values.
+///
+/// # Example
+/// ```
+/// # use mimir::engine::PlaceholderGenerator;
+/// let mut pgen = PlaceholderGenerator::new();
+///
+/// let a = pgen.new_placeholder();
+/// let b = pgen.new_placeholder();
+///
+/// assert!(a != b);
+/// ```
 pub struct PlaceholderGenerator {
     next: PlaceholderID,
 }
@@ -105,7 +116,7 @@ pub enum RelationalOp {
 }
 
 impl RelationalOp {
-    /// Use this operator to evaluate two numbers
+    /// Use this operator to evaluate two numbers.
     pub fn evaluate(&self, a: Number, b: Number) -> bool {
         match self {
             RelationalOp::LessThan => a < b,
@@ -148,16 +159,16 @@ impl ArithmeticOp {
 /// A term that can appear on the right-hand side of an assignment.
 #[derive(Clone)]
 pub enum RHSTerm {
-    /// A literal number
+    /// A literal number.
     Number(Number),
-    /// An arithmetic expression
+    /// An arithmetic expression.
     Expression(Expression),
-    /// A symbol (clause head)
+    /// A symbol (clause head).
     Symbol(Symbol),
 }
 
 impl RHSTerm {
-    /// Evaluate this term to a value given the environment
+    /// Evaluate this term to a value given the environment.
     pub fn evaluate(&self, env: &Environment, equiv: &Equivalence) -> Result<Value, EngineError> {
         match self {
             RHSTerm::Number(n) => Ok(Value::Number(*n)),
@@ -219,17 +230,17 @@ impl Expression {
 /// Possible goals. These act as the body of clauses and the elements of the goal stack.
 #[derive(Clone)]
 pub enum Goal {
-    /// A conjunction of two goals: both must be true
+    /// A conjunction of two goals: both must be true.
     Conjunction(Box<Goal>, Box<Goal>),
-    /// A disjunction of two goals: at least one must be true
+    /// A disjunction of two goals: at least one must be true.
     Disjunction(Box<Goal>, Box<Goal>),
-    /// Two variables that must be unified
+    /// Two variables that must be unified.
     Equivalence(Variable, Variable),
-    /// Check that the given clause is true
+    /// Check that the given clause is true.
     Check {
-        /// The name of the clause
+        /// The name of the clause.
         functor: String,
-        /// The variable arguments of the clause
+        /// The variable arguments of the clause.
         arguments: Vec<Variable>,
     },
     /// A special goal that restores a previous environment.
@@ -436,15 +447,11 @@ impl Equivalence {
 
         // A placeholder (unassigned) value always unifies
         if matches!(val1, Value::Placeholder(_)) {
-            self.equiv
-                .insert(val1.clone(), val2.clone())
-                .expect("could not insert relation");
+            self.equiv.insert(val1.clone(), val2.clone());
 
             return Ok(());
         } else if matches!(val2, Value::Placeholder(_)) {
-            self.equiv
-                .insert(val2.clone(), val1.clone())
-                .expect("could not insert relation");
+            self.equiv.insert(val2.clone(), val1.clone());
 
             return Ok(());
         }
