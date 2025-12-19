@@ -7,12 +7,12 @@ This project is a Rust implementation of Mini-Prolog, completed for a Computer S
 ## Building and Running
 To build and run Mimir, ensure you have Rust installed. Then, clone the repository and use Cargo to build and run the project:
 
-```bash
+```
 cargo run
 ```
 
 To run the tests, use:
 
-```bash
+```
 cargo test
 ```
