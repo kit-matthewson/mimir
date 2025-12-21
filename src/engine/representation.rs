@@ -699,7 +699,15 @@ impl Default for Equivalence {
     }
 }
 
-/// A macro for conveniently constructing Vecs of variables
+/// A macro for conveniently constructing Vecs of variables.
+///
+/// # Example
+/// ```
+/// # use mimir::engine::Variable;
+/// # use mimir::var_vec;
+/// let vars = var_vec!["A", "B", "C"];
+/// assert_eq!(vars, vec![Variable::new("A"), Variable::new("B"), Variable::new("C")]);
+/// ```
 #[macro_export]
 macro_rules! var_vec {
     ( $($x:expr),*) => {
