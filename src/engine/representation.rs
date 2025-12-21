@@ -347,6 +347,38 @@ pub enum Goal {
     Bool(bool),
 }
 
+impl std::fmt::Display for Goal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Goal::Conjunction(g1, g2) => write!(f, "({} , {})", g1, g2),
+            Goal::Disjunction(g1, g2) => write!(f, "({} ; {})", g1, g2),
+            Goal::Equivalence(v1, v2) => write!(f, "{} == {}", v1, v2),
+            Goal::Check { functor, arguments } => {
+                let args_str = arguments
+                    .iter()
+                    .map(|arg| format!("{}", arg))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                write!(f, "{}({})", functor, args_str)
+            }
+            Goal::Restore(_) => write!(f, "<restore env>"),
+            Goal::Relation(v1, v2, op) => {
+                let op_str = match op {
+                    RelationalOp::LessThan => "<",
+                    RelationalOp::LessThanEqual => "<=",
+                    RelationalOp::GreaterThan => ">",
+                    RelationalOp::GreaterThanEqual => ">=",
+                    RelationalOp::Equal => "==",
+                    RelationalOp::NotEqual => "!=",
+                };
+                write!(f, "{} {} {}", v1, op_str, v2)
+            }
+            Goal::Assign(var, term) => write!(f, "{} := {:?}", var, term),
+            Goal::Bool(b) => write!(f, "{}", b),
+        }
+    }
+}
+
 /// A clause with head and body.
 ///
 /// The body is a single `Goal`, which can be a conjunction or disjunction.
@@ -360,8 +392,20 @@ pub struct Clause {
 
 impl Clause {
     /// Create a new clause.
-    pub fn new(head: Symbol, body: Goal) -> Self {
-        Clause { head, body }
+    pub fn new<T: Into<String>>(
+        functor: T,
+        parameters: Vec<Variable>,
+        local_vars: Vec<Variable>,
+        body: Goal,
+    ) -> Self {
+        Clause {
+            head: Symbol {
+                functor: functor.into(),
+                parameters,
+                local_vars,
+            },
+            body,
+        }
     }
 
     /// Gets the arity (number of arguments) of this clause.
@@ -372,6 +416,37 @@ impl Clause {
     /// Gets the functor (name) of this clause.
     pub fn functor(&self) -> &str {
         &self.head.functor
+    }
+}
+
+impl std::fmt::Display for Clause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params_str = self
+            .head
+            .parameters
+            .iter()
+            .map(|param| format!("{}", param))
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        let local_vars_str = if self.head.local_vars.is_empty() {
+            String::new()
+        } else {
+            let vars_str = self
+                .head
+                .local_vars
+                .iter()
+                .map(|var| format!("{}", var))
+                .collect::<Vec<String>>()
+                .join(", ");
+            format!("{{ {} }} ", vars_str)
+        };
+
+        write!(
+            f,
+            "{}({}) {}:- {}.",
+            self.head.functor, params_str, local_vars_str, self.body
+        )
     }
 }
 
@@ -415,7 +490,7 @@ impl Environment {
 
     /// Create an environemt for a symbol with the given arguments.
     ///
-    /// Local variables to the clause are assigned `None`.
+    /// Local variables to the clause are assigned to placeholders.
     pub fn for_symbol(
         symbol: &Symbol,
         arguments: &Vec<Value>,
@@ -441,6 +516,20 @@ impl Environment {
         Ok(Environment { mapping })
     }
 
+    /// Create an environment for a query.
+    pub fn for_query(
+        local_vars: Vec<Variable>,
+        placeholder_gen: &mut PlaceholderGenerator,
+    ) -> Self {
+        let mut mapping = HashMap::with_capacity(local_vars.len());
+
+        for var in local_vars.iter() {
+            mapping.insert(var.clone(), placeholder_gen.new_placeholder());
+        }
+
+        Environment { mapping }
+    }
+
     /// Clear all variable mappings in this environment.
     pub fn clear(&mut self) {
         self.mapping.clear();
@@ -453,24 +542,20 @@ impl Environment {
 
     /// Create a new environment from a given clause and existing environent.
     ///
-    /// The other environment is used to get paramater values.
+    /// The other environment is used to get parameter values.
     pub fn from_clause(
         clause: &Clause,
+        arguments: &[Variable],
         env: &Environment,
         equiv: &Equivalence,
         placeholder_gen: &mut PlaceholderGenerator,
     ) -> Result<Self, EngineError> {
-        let clause_args = clause
-            .head
-            .parameters
+        let values = arguments
             .iter()
             .map(|var| env.get(var, equiv))
-            .collect();
+            .collect::<Result<Vec<Value>, EngineError>>()?;
 
-        match clause_args {
-            Ok(args) => Environment::for_symbol(&clause.head, &args, placeholder_gen),
-            Err(err) => Err(err),
-        }
+        Environment::for_symbol(&clause.head, &values, placeholder_gen)
     }
 
     /// Get the value of the given variable.
@@ -482,6 +567,28 @@ impl Environment {
             .ok_or_else(|| EngineError::UndefinedVar(variable.clone()))?;
 
         equiv.set_representative(value)
+    }
+}
+
+impl std::fmt::Display for Environment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Handle empty environment
+        if self.mapping.is_empty() {
+            write!(f, "<empty>")?;
+            return Ok(());
+        }
+
+        let mut first = true;
+
+        for (var, value) in self.mapping.iter() {
+            if !first {
+                write!(f, ", ")?;
+            }
+            write!(f, "{} = {:?}", var, value)?;
+            first = false;
+        }
+
+        Ok(())
     }
 }
 

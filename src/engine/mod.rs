@@ -20,6 +20,21 @@ struct State {
     placeholder_gen: PlaceholderGenerator,
 }
 
+/// A Prolog query.
+#[derive(Clone, Debug)]
+pub struct Query {
+    /// Local variables of the query.
+    pub local_vars: Vec<Variable>,
+    /// The goal of the query.
+    pub goal: Goal,
+}
+
+impl std::fmt::Display for Query {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "?- {}", self.goal)
+    }
+}
+
 impl State {
     pub fn restore_choice(&mut self, choice: Choice) {
         self.env = choice.env;
@@ -38,13 +53,13 @@ impl Engine {
     }
 
     /// Execute the engine on the given query.
-    pub fn execute(&self, query: Symbol) -> Result<Vec<Environment>, EngineError> {
+    pub fn execute(&self, query: Query) -> Result<Vec<(Environment, Equivalence)>, EngineError> {
         let mut placeholder_gen = PlaceholderGenerator::new();
 
         let mut state = State {
-            env: Environment::for_symbol(&query, &Vec::new(), &mut placeholder_gen)?,
+            env: Environment::for_query(query.local_vars, &mut placeholder_gen),
             equiv: Equivalence::new(),
-            goal_stack: Vec::new(),
+            goal_stack: vec![query.goal],
             choice_stack: Vec::new(),
             placeholder_gen,
         };
@@ -60,7 +75,8 @@ impl Engine {
                     // All valid assignments found
                     break;
                 } else {
-                    solutions.push(state.env.clone());
+                    solutions.push((state.env.clone(), state.equiv.clone()));
+
                     // We might be able to find another assignment
                     state.goal_stack.push(Goal::Bool(false));
                 }
@@ -174,11 +190,11 @@ impl Engine {
         state.goal_stack.push(Goal::Restore(state.env.clone()));
 
         let clause = clauses.first().unwrap();
-        state.goal_stack.push(clause.body.clone());
 
         for clause in clauses.iter().skip(1).rev() {
             let clause_env = Environment::from_clause(
                 clause,
+                &arguments,
                 &state.env,
                 &state.equiv,
                 &mut state.placeholder_gen,
@@ -194,10 +210,18 @@ impl Engine {
             state.choice_stack.push(choice);
         }
 
-        state.env =
-            Environment::from_clause(clause, &state.env, &state.equiv, &mut state.placeholder_gen)?;
+        state.env = Environment::from_clause(
+            clause,
+            &arguments,
+            &state.env,
+            &state.equiv,
+            &mut state.placeholder_gen,
+        )?;
         state.goal_stack.push(clause.body.clone());
 
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {}
