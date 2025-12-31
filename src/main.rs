@@ -3,9 +3,11 @@ use mimir::{engine::*, error::EngineError, var_vec};
 macro_rules! clause {
     ($name:ident ( $($p:ident),* ) { $($l:ident),* } :- $goal:expr) => {
         Clause::new(
-            stringify!($name),
-            vec![$( Variable::new(stringify!($p)) ),*],
-            vec![$( Variable::new(stringify!($l)) ),*],
+            Symbol::new(
+                stringify!($name),
+                vec![$( Variable::new(stringify!($p)) ),*],
+                vec![$( Variable::new(stringify!($l)) ),*],
+            ),
             $goal
         )
     };

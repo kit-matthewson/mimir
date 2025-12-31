@@ -119,24 +119,24 @@ impl Environment {
         arguments: &Vec<Value>,
         placeholder_gen: &mut PlaceholderGenerator,
     ) -> Result<Self, EngineError> {
-        // The number of parameters must match the number of arguments
-        if symbol.parameters.len() != arguments.len() {
+        // The number of arguments must match the symbol's arity
+        if symbol.arity() != arguments.len() {
             return Err(EngineError::UnexpectedParamNum {
-                expected: symbol.parameters.len(),
+                expected: symbol.arity(),
                 got: arguments.len(),
             });
         }
 
         // Allocate a hash map with space for parameters and local variables
-        let mut mapping = HashMap::with_capacity(symbol.parameters.len() + symbol.local_vars.len());
+        let mut mapping = HashMap::with_capacity(symbol.arity() + symbol.local_vars().len());
 
         // Map parameters to arguments
-        for (var, value) in symbol.parameters.iter().zip(arguments) {
+        for (var, value) in symbol.parameters().iter().zip(arguments) {
             mapping.insert(var.clone(), value.clone());
         }
 
         // Map local variables to new placeholders
-        for var in symbol.local_vars.iter() {
+        for var in symbol.local_vars().iter() {
             mapping.insert(var.clone(), placeholder_gen.new_placeholder());
         }
 
@@ -346,5 +346,207 @@ impl Equivalence {
 impl Default for Equivalence {
     fn default() -> Self {
         Equivalence::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::var_vec;
+
+    use super::*;
+
+    #[test]
+    fn test_choice_creation() {
+        let goal = Goal::Bool(true);
+        let env = Environment::empty();
+        let equiv = Equivalence::new();
+        let goal_stack = vec![Goal::Bool(false)];
+
+        let choice = Choice::new(goal.clone(), env.clone(), equiv.clone(), goal_stack.clone());
+
+        assert_eq!(choice.goal, goal);
+        assert_eq!(choice.env, env);
+        assert_eq!(choice.equiv.equiv, equiv.equiv);
+        assert_eq!(choice.goal_stack, goal_stack);
+    }
+
+    #[test]
+    fn test_environment_creation() {
+        let mut pgen = PlaceholderGenerator::new();
+
+        // Test empty environment
+        let env = Environment::empty();
+        assert!(env.is_empty());
+
+        // Test environment for symbol
+        let symbol = Symbol::new("sym", var_vec!["X", "Y"], var_vec!["Z"]);
+        let args = vec![Value::Number(10), Value::Number(20)];
+
+        let env = Environment::for_symbol(&symbol, &args, &mut pgen).unwrap();
+        let equiv = Equivalence::new();
+
+        // Parameters should be mapped to arguments
+        assert_eq!(
+            env.get(&Variable::new("X"), &equiv).unwrap(),
+            Value::Number(10)
+        );
+        assert_eq!(
+            env.get(&Variable::new("Y"), &equiv).unwrap(),
+            Value::Number(20)
+        );
+        assert!(matches!(
+            env.get(&Variable::new("Z"), &equiv).unwrap(),
+            Value::Placeholder(_)
+        ));
+
+        // Now we have an equivalence with X=10 and Y=20
+        let env = Environment::for_symbol_with_params(
+            &symbol,
+            &vec![Variable::new("X"), Variable::new("Y")],
+            &env,
+            &equiv,
+            &mut pgen,
+        )
+        .unwrap();
+
+        assert_eq!(
+            env.get(&Variable::new("X"), &equiv).unwrap(),
+            Value::Number(10)
+        );
+        assert_eq!(
+            env.get(&Variable::new("Y"), &equiv).unwrap(),
+            Value::Number(20)
+        );
+        assert!(matches!(
+            env.get(&Variable::new("Z"), &equiv).unwrap(),
+            Value::Placeholder(_)
+        ));
+
+        // Test environment for query
+        let query = Query {
+            local_vars: vec![Variable::new("A"), Variable::new("B")],
+            goal: Goal::Bool(true),
+        };
+
+        let env = Environment::for_query(&query, &mut pgen);
+
+        // Should have created placeholders for A and B
+        assert!(matches!(
+            env.get(&Variable::new("A"), &equiv).unwrap(),
+            Value::Placeholder(_)
+        ));
+        assert!(matches!(
+            env.get(&Variable::new("B"), &equiv).unwrap(),
+            Value::Placeholder(_)
+        ));
+    }
+
+    #[test]
+    fn test_environment_assignment() {
+        let mut env = Environment::empty();
+        let var = Variable::new("X");
+        let val = Value::Number(42);
+
+        env.assign(&var, val.clone());
+
+        let equiv = Equivalence::new();
+        assert_eq!(env.get(&var, &equiv).unwrap(), val);
+
+        env.clear();
+
+        assert!(env.is_empty());
+        assert!(env.get(&var, &equiv).is_err());
+    }
+
+    #[test]
+    fn test_clause_db() {
+        let clause1_a = Clause::new(
+            Symbol::new("clause1", var_vec!["X"], vec![]),
+            Goal::Bool(true),
+        );
+
+        let clause1_b = Clause::new(
+            Symbol::new("clause1", var_vec!["Y"], vec![]),
+            Goal::Bool(false),
+        );
+
+        let clause2 = Clause::new(
+            Symbol::new("clause2", var_vec!["Z"], vec![]),
+            Goal::Bool(true),
+        );
+
+        let program = vec![clause1_a.clone(), clause1_b.clone(), clause2.clone()];
+
+        let db = ClauseDatabase::new(program);
+
+        let clauses = db.get("clause1", 1);
+        assert_eq!(clauses.len(), 2);
+        assert_eq!(clauses[0], clause1_a);
+        assert_eq!(clauses[1], clause1_b);
+
+        let clauses = db.get("clause2", 1);
+        assert_eq!(clauses.len(), 1);
+        assert_eq!(clauses[0], clause2);
+
+        let clauses = db.get("clause1", 2);
+        assert!(clauses.is_empty());
+    }
+
+    #[test]
+    fn test_equivalence_unification() {
+        let mut equiv = Equivalence::new();
+
+        let val1 = Value::Number(10);
+        let val2 = Value::Number(20);
+        let placeholder = Value::Placeholder(1);
+
+        // Unify two identical values
+        assert!(equiv.unify(&val1, &val1).is_ok());
+        assert_eq!(equiv.set_representative(&val1).unwrap(), val1);
+
+        // Unify a placeholder with a value
+        assert!(equiv.unify(&placeholder, &val2).is_ok());
+        assert_eq!(equiv.set_representative(&placeholder).unwrap(), val2);
+
+        // Unify two different values should fail
+        assert!(equiv.unify(&val1, &val2).is_err());
+
+        // Unify two compounds
+        let comp1 = Value::Ground("f".to_string(), vec![Value::Number(1), placeholder.clone()]);
+        let comp2 = Value::Ground("f".to_string(), vec![Value::Number(1), Value::Number(30)]);
+
+        assert!(equiv.unify(&comp1, &comp2).is_ok());
+        assert_eq!(
+            equiv.set_representative(&placeholder).unwrap(),
+            Value::Number(30)
+        );
+
+        // Unify compounds with different functors should fail
+        let comp3 = Value::Ground("g".to_string(), vec![Value::Number(1)]);
+        assert!(equiv.unify(&comp1, &comp3).is_err());
+
+        // Unify compounds with different arities should fail
+        let comp4 = Value::Ground("f".to_string(), vec![Value::Number(1)]);
+        assert!(equiv.unify(&comp1, &comp4).is_err());
+    }
+
+    #[test]
+    fn test_equivalence_set_representative() {
+        let mut pgen = PlaceholderGenerator::new();
+
+        let mut equiv = Equivalence::new();
+
+        let val1 = Value::Number(10);
+        let val2 = pgen.new_placeholder();
+        let val3 = pgen.new_placeholder();
+
+        // Create a chain: val3 -> val2 -> val1
+        equiv.unify(&val2, &val1).unwrap();
+        equiv.unify(&val3, &val2).unwrap();
+
+        // The representative of val1 and val2 should be val3
+        assert_eq!(equiv.set_representative(&val1).unwrap(), val1);
+        assert_eq!(equiv.set_representative(&val2).unwrap(), val1);
+        assert_eq!(equiv.set_representative(&val3).unwrap(), val1);
     }
 }

@@ -191,7 +191,7 @@ impl Engine {
         // The first clause is handled directly so that we do not have not make an extra choice
         for clause in clauses.iter().skip(1).rev() {
             let clause_env = Environment::for_symbol_with_params(
-                &clause.head,
+                clause.head(),
                 &params,
                 &state.env,
                 &state.equiv,
@@ -199,7 +199,7 @@ impl Engine {
             )?;
 
             let choice = Choice::new(
-                clause.body.clone(),
+                clause.body().clone(),
                 clause_env,
                 state.equiv.clone(),
                 state.goal_stack.clone(),
@@ -212,14 +212,14 @@ impl Engine {
         let first_clause = clauses.first().unwrap();
 
         state.env = Environment::for_symbol_with_params(
-            &first_clause.head,
+            first_clause.head(),
             &params,
             &state.env,
             &state.equiv,
             &mut state.placeholder_gen,
         )?;
 
-        state.goal_stack.push(first_clause.body.clone());
+        state.goal_stack.push(first_clause.body().clone());
 
         Ok(())
     }

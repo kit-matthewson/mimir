@@ -327,15 +327,25 @@ impl RHSTerm {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Symbol {
     /// The string functor name.
-    pub functor: String,
+    functor: String,
     /// Vector of parameter variables.
-    pub parameters: Vec<Variable>,
+    parameters: Vec<Variable>,
     /// Vector of local variables.
-    pub local_vars: Vec<Variable>,
+    local_vars: Vec<Variable>,
 }
 
 impl Symbol {
     /// Create a new symbol.
+    ///
+    /// # Example
+    /// ```
+    /// # use mimir::engine::{Symbol, Variable};
+    /// # use mimir::var_vec;
+    /// let sym = Symbol::new("my_sym", var_vec!["A", "B", "C"], vec![]);
+    /// assert_eq!(sym.functor(), "my_sym");
+    /// assert_eq!(sym.parameters(), &var_vec!["A", "B", "C"]);
+    /// assert_eq!(sym.local_vars(), &vec![]);
+    /// ```
     pub fn new<T: Into<String>, V1: Into<Vec<Variable>>, V2: Into<Vec<Variable>>>(
         functor: T,
         parameters: V1,
@@ -350,12 +360,75 @@ impl Symbol {
 
     /// Helper for creating symbols for facts.
     /// Facts have no local variables.
+    ///
+    /// # Example
+    /// ```
+    /// # use mimir::engine::{Symbol, Variable};
+    /// # use mimir::var_vec;
+    /// let fact_sym = Symbol::fact("my_fact", var_vec!["X", "Y"]);
+    /// assert_eq!(fact_sym.functor(), "my_fact");
+    /// assert_eq!(fact_sym.parameters(), &var_vec!["X", "Y"]);
+    /// assert_eq!(fact_sym.arity(), 2);
+    /// assert_eq!(fact_sym.local_vars(), &vec![]);
+    /// ```
     pub fn fact<T: Into<String>, V: Into<Vec<Variable>>>(functor: T, parameters: V) -> Self {
         Symbol {
             functor: functor.into(),
             parameters: parameters.into(),
             local_vars: Vec::new(),
         }
+    }
+
+    /// Get the arity (number of parameters) of this symbol.
+    ///
+    /// # Example
+    /// ```
+    /// # use mimir::engine::{Symbol, Variable};
+    /// # use mimir::var_vec;
+    /// let sym = Symbol::new("my_sym", var_vec!["A", "B", "C"], vec![]);
+    /// assert_eq!(sym.arity(), 3);
+    /// ```
+    pub fn arity(&self) -> usize {
+        self.parameters.len()
+    }
+
+    /// Get the functor (name) of this symbol.
+    ///
+    /// # Example
+    /// ```
+    /// # use mimir::engine::{Symbol, Variable};
+    /// # use mimir::var_vec;
+    /// let sym = Symbol::new("my_sym", var_vec!["A", "B", "C"], vec![]);
+    /// assert_eq!(sym.functor(), "my_sym");
+    /// ```
+    pub fn functor(&self) -> &str {
+        &self.functor
+    }
+
+    /// Get the parameters of this symbol.
+    ///
+    /// # Example
+    /// ```
+    /// # use mimir::engine::{Symbol, Variable};
+    /// # use mimir::var_vec;
+    /// let sym = Symbol::new("my_sym", var_vec!["A", "B", "C"], vec![]);
+    /// assert_eq!(sym.parameters(), &var_vec!["A", "B", "C"]);
+    /// ```
+    pub fn parameters(&self) -> &Vec<Variable> {
+        &self.parameters
+    }
+
+    /// Get the local variables of this symbol.
+    ///
+    /// # Example
+    /// ```
+    /// # use mimir::engine::{Symbol, Variable};
+    /// # use mimir::var_vec;
+    /// let sym = Symbol::new("my_sym", vec![], var_vec!["X", "Y"]);
+    /// assert_eq!(sym.local_vars(), &var_vec!["X", "Y"]);
+    /// ```
+    pub fn local_vars(&self) -> &Vec<Variable> {
+        &self.local_vars
     }
 }
 
@@ -365,37 +438,48 @@ impl Symbol {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Clause {
     /// The symbol (functor, parameters, and local vars) of the clause.
-    pub head: Symbol,
+    head: Symbol,
     /// The body goal of the clause.
-    pub body: Goal,
+    body: Goal,
 }
 
 impl Clause {
     /// Create a new clause.
-    pub fn new<T: Into<String>>(
-        functor: T,
-        parameters: Vec<Variable>,
-        local_vars: Vec<Variable>,
-        body: Goal,
-    ) -> Self {
-        Clause {
-            head: Symbol {
-                functor: functor.into(),
-                parameters,
-                local_vars,
-            },
-            body,
-        }
+    ///
+    /// # Example
+    /// ```
+    /// # use mimir::engine::{Clause, Goal, Variable, Symbol};
+    /// # use mimir::var_vec;
+    /// let clause = Clause::new(
+    ///    Symbol::new("my_clause", var_vec!["X", "Y"], vec![]),
+    ///    Goal::Bool(true),
+    /// );
+    /// assert_eq!(clause.head().functor(), "my_clause");
+    /// assert_eq!(clause.arity(), 2);
+    /// assert_eq!(clause.body(), &Goal::Bool(true));
+    /// ```
+    pub fn new(head: Symbol, body: Goal) -> Self {
+        Clause { head, body }
     }
 
     /// Gets the arity (number of parameters) of this clause.
     pub fn arity(&self) -> usize {
-        self.head.parameters.len()
+        self.head.arity()
     }
 
     /// Gets the functor (name) of this clause.
     pub fn functor(&self) -> &str {
-        &self.head.functor
+        self.head.functor()
+    }
+
+    /// Gets the head (symbol) of this clause.
+    pub fn head(&self) -> &Symbol {
+        &self.head
+    }
+
+    /// Gets the body (goal) of this clause.
+    pub fn body(&self) -> &Goal {
+        &self.body
     }
 }
 
