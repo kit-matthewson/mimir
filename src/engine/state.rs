@@ -402,7 +402,7 @@ mod tests {
         // Now we have an equivalence with X=10 and Y=20
         let env = Environment::for_symbol_with_params(
             &symbol,
-            &vec![Variable::new("X"), Variable::new("Y")],
+            &[Variable::new("X"), Variable::new("Y")],
             &env,
             &equiv,
             &mut pgen,
