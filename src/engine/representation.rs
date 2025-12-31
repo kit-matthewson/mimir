@@ -1,8 +1,6 @@
-//! Internal Mini-Prolog representation
+//! Internal Mini-Prolog representation.
 
-use std::collections::HashMap;
-
-use crate::error::EngineError;
+use crate::{engine::state::*, error::EngineError};
 
 /// Type for placeholder value IDs
 type PlaceholderID = u32;
@@ -10,8 +8,6 @@ type PlaceholderID = u32;
 type Number = i64;
 
 /// A reference to a variable by name.
-///
-/// Currently stored as an owned `String`, but this could be optimised.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Variable {
     name: String,
@@ -36,15 +32,15 @@ impl std::fmt::Display for Variable {
     }
 }
 
-/// The value of a variable.
+/// The value that a variable can take.
 ///
-/// This may be an uninitialised 'placeholder' value.
+/// This may be an uninitialised 'placeholder' value, a number, or a ground term.
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum Value {
     /// An i64 'Number' value.
     Number(Number),
     /// A ground term. A ground term is a term that does not contain any variables.
-    /// Essentially, a functor and a list of argument values.
+    /// Essentially, a functor and a list of parameter values.
     Ground(String, Vec<Value>),
     /// A placeholder value.
     Placeholder(PlaceholderID),
@@ -67,7 +63,9 @@ impl Value {
     }
 
     /// Attempt to get a number from this value.
-    pub fn number(&self) -> Option<Number> {
+    ///
+    /// Returns `None` if this value is not a number.
+    pub fn get_number(&self) -> Option<Number> {
         match self {
             Value::Number(n) => Some(*n),
             _ => None,
@@ -75,7 +73,9 @@ impl Value {
     }
 
     /// Attempt to get the placeholder ID of this value.
-    pub fn placeholder_id(&self) -> Option<PlaceholderID> {
+    ///
+    /// Returns `None` if this value is not a placeholder.
+    pub fn get_placeholder_id(&self) -> Option<PlaceholderID> {
         match self {
             Value::Placeholder(id) => Some(*id),
             _ => None,
@@ -122,42 +122,6 @@ impl Default for PlaceholderGenerator {
     }
 }
 
-/// The head of a clause with a name, parameters, and list of local variables.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Symbol {
-    /// The string functor name.
-    pub functor: String,
-    /// Vector of parameter variables.
-    pub parameters: Vec<Variable>,
-    /// Vector of local variables.
-    pub local_vars: Vec<Variable>,
-}
-
-impl Symbol {
-    /// Create a new symbol.
-    pub fn new<T: Into<String>, V1: Into<Vec<Variable>>, V2: Into<Vec<Variable>>>(
-        functor: T,
-        parameters: V1,
-        local_vars: V2,
-    ) -> Self {
-        Symbol {
-            functor: functor.into(),
-            parameters: parameters.into(),
-            local_vars: local_vars.into(),
-        }
-    }
-
-    /// Helper for creating symbols for facts.
-    /// Facts have no local variables.
-    pub fn fact<T: Into<String>, V: Into<Vec<Variable>>>(functor: T, parameters: V) -> Self {
-        Symbol {
-            functor: functor.into(),
-            parameters: parameters.into(),
-            local_vars: Vec::new(),
-        }
-    }
-}
-
 /// Possible relational operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RelationalOp {
@@ -177,6 +141,14 @@ pub enum RelationalOp {
 
 impl RelationalOp {
     /// Use this operator to evaluate two numbers.
+    ///
+    /// # Example
+    /// ```
+    /// # use mimir::engine::RelationalOp;
+    /// let op = RelationalOp::LessThan;
+    /// assert!(op.evaluate(5, 10));
+    /// assert!(!op.evaluate(10, 5));
+    /// ```
     pub fn evaluate(&self, a: Number, b: Number) -> bool {
         match self {
             RelationalOp::LessThan => a < b,
@@ -204,6 +176,7 @@ pub enum ArithmeticOp {
 
 impl ArithmeticOp {
     /// Evaluates two numbers with this operator.
+    ///
     /// Uses saturating addition, subtraction, and multiplication so numbers are clamped to the range of `Number`.
     /// Division by zero returns an error.
     pub fn evaluate(&self, a: Number, b: Number) -> Result<Number, EngineError> {
@@ -220,6 +193,27 @@ impl ArithmeticOp {
 }
 
 /// An arithmetic expression.
+///
+/// Expressions can be numbers, variables, or binary expressions combining two sub-expressions with an operator.
+///
+/// # Example
+/// ```
+/// # use mimir::engine::{Expression, ArithmeticOp, Variable, Environment, Equivalence};
+/// // 10 + (5 * 2)
+/// let expr = Expression::binary(
+///     Expression::number(10),
+///     Expression::binary(
+///         Expression::number(5),
+///         Expression::number(2),
+///         ArithmeticOp::Multiply,
+///     ),
+///     ArithmeticOp::Add,
+/// );
+/// let env = Environment::empty();
+/// let equiv = Equivalence::new();
+/// let result = expr.evaluate(&env, &equiv).unwrap();
+/// assert_eq!(result, 20);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expression {
     /// A number.
@@ -232,13 +226,15 @@ pub enum Expression {
 
 impl Expression {
     /// Evaluate this expression to a number.
+    ///
+    /// An environment and equivalence mapping are required to resolve variable values.
     pub fn evaluate(&self, env: &Environment, equiv: &Equivalence) -> Result<Number, EngineError> {
         match self {
             Expression::Num(n) => Ok(*n),
             Expression::Var(var) => {
                 let val = env.get(var, equiv)?;
 
-                if let Some(n) = val.number() {
+                if let Some(n) = val.get_number() {
                     Ok(n)
                 } else {
                     Err(EngineError::NotANumber(var.clone()))
@@ -275,12 +271,14 @@ impl Expression {
     }
 }
 
+/// Allows easy conversion from Number to Expression.
 impl From<Number> for Expression {
     fn from(n: Number) -> Self {
         Expression::Num(n)
     }
 }
 
+/// Allows easy conversion from Variable to Expression.
 impl From<Variable> for Expression {
     fn from(var: Variable) -> Self {
         Expression::Var(var)
@@ -288,26 +286,28 @@ impl From<Variable> for Expression {
 }
 
 /// A term that can appear on the right-hand side of an assignment.
+///
+/// This can be a literal number, an arithmetic expression, or a symbol (clause head).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RHSTerm {
     /// A literal number.
-    Number(Number),
+    Num(Number),
     /// An arithmetic expression.
-    Expression(Expression),
+    Expr(Expression),
     /// A symbol (clause head).
-    Symbol(Symbol),
+    Sym(Symbol),
 }
 
 impl RHSTerm {
     /// Evaluate this term to a value given the environment.
     pub fn evaluate(&self, env: &Environment, equiv: &Equivalence) -> Result<Value, EngineError> {
         match self {
-            RHSTerm::Number(n) => Ok(Value::Number(*n)),
-            RHSTerm::Expression(expr) => {
+            RHSTerm::Num(n) => Ok(Value::Number(*n)),
+            RHSTerm::Expr(expr) => {
                 let result = expr.evaluate(env, equiv)?;
                 Ok(Value::Number(result))
             }
-            RHSTerm::Symbol(sym) => {
+            RHSTerm::Sym(sym) => {
                 // Get the value of each parameter
                 let values = sym
                     .parameters
@@ -321,60 +321,40 @@ impl RHSTerm {
     }
 }
 
-/// Possible goals. These act as the body of clauses and the elements of the goal stack.
+/// The head of a clause with a name, parameters, and list of local variables.
+///
+/// Symbols are used to represent clause heads.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Goal {
-    /// A conjunction of two goals: both must be true.
-    Conjunction(Box<Goal>, Box<Goal>),
-    /// A disjunction of two goals: at least one must be true.
-    Disjunction(Box<Goal>, Box<Goal>),
-    /// Two variables that must be unified.
-    Equivalence(Variable, Variable),
-    /// Check that the given clause is true.
-    Check {
-        /// The name of the clause.
-        functor: String,
-        /// The variable arguments of the clause.
-        arguments: Vec<Variable>,
-    },
-    /// A special goal that restores a previous environment.
-    Restore(Environment),
-    /// Relational statements for numbers.
-    Relation(Variable, Variable, RelationalOp),
-    /// Make a variable equivilant to some term.
-    Assign(Variable, RHSTerm),
-    /// A boolean goal: true always succeeds, false always fails.
-    Bool(bool),
+pub struct Symbol {
+    /// The string functor name.
+    pub functor: String,
+    /// Vector of parameter variables.
+    pub parameters: Vec<Variable>,
+    /// Vector of local variables.
+    pub local_vars: Vec<Variable>,
 }
 
-impl std::fmt::Display for Goal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Goal::Conjunction(g1, g2) => write!(f, "({} , {})", g1, g2),
-            Goal::Disjunction(g1, g2) => write!(f, "({} ; {})", g1, g2),
-            Goal::Equivalence(v1, v2) => write!(f, "{} == {}", v1, v2),
-            Goal::Check { functor, arguments } => {
-                let args_str = arguments
-                    .iter()
-                    .map(|arg| format!("{}", arg))
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                write!(f, "{}({})", functor, args_str)
-            }
-            Goal::Restore(_) => write!(f, "<restore env>"),
-            Goal::Relation(v1, v2, op) => {
-                let op_str = match op {
-                    RelationalOp::LessThan => "<",
-                    RelationalOp::LessThanEqual => "<=",
-                    RelationalOp::GreaterThan => ">",
-                    RelationalOp::GreaterThanEqual => ">=",
-                    RelationalOp::Equal => "==",
-                    RelationalOp::NotEqual => "!=",
-                };
-                write!(f, "{} {} {}", v1, op_str, v2)
-            }
-            Goal::Assign(var, term) => write!(f, "{} := {:?}", var, term),
-            Goal::Bool(b) => write!(f, "{}", b),
+impl Symbol {
+    /// Create a new symbol.
+    pub fn new<T: Into<String>, V1: Into<Vec<Variable>>, V2: Into<Vec<Variable>>>(
+        functor: T,
+        parameters: V1,
+        local_vars: V2,
+    ) -> Self {
+        Symbol {
+            functor: functor.into(),
+            parameters: parameters.into(),
+            local_vars: local_vars.into(),
+        }
+    }
+
+    /// Helper for creating symbols for facts.
+    /// Facts have no local variables.
+    pub fn fact<T: Into<String>, V: Into<Vec<Variable>>>(functor: T, parameters: V) -> Self {
+        Symbol {
+            functor: functor.into(),
+            parameters: parameters.into(),
+            local_vars: Vec::new(),
         }
     }
 }
@@ -408,7 +388,7 @@ impl Clause {
         }
     }
 
-    /// Gets the arity (number of arguments) of this clause.
+    /// Gets the arity (number of parameters) of this clause.
     pub fn arity(&self) -> usize {
         self.head.parameters.len()
     }
@@ -450,252 +430,20 @@ impl std::fmt::Display for Clause {
     }
 }
 
-/// A choice contains the information needed to recover from a backtrack.
-pub struct Choice {
-    /// The goal that led to this choice.
+/// A Prolog query.
+///
+/// Queries contain a list of local variables (the variables to return) and a goal to execute.
+#[derive(Clone, Debug)]
+pub struct Query {
+    /// Local variables of the query.
+    pub local_vars: Vec<Variable>,
+    /// The goal of the query.
     pub goal: Goal,
-    /// The environment to restore after a backtrack.
-    pub env: Environment,
-    /// The equivalence to restore after a backtrack.
-    pub equiv: Equivalence,
-    /// The goal stack to restore after a backtrack.
-    pub goal_stack: Vec<Goal>,
 }
 
-impl Choice {
-    /// Create a new choice when a decision has been made.
-    pub fn new(goal: Goal, env: Environment, equiv: Equivalence, goal_stack: Vec<Goal>) -> Self {
-        Choice {
-            goal,
-            env,
-            equiv,
-            goal_stack,
-        }
-    }
-}
-
-/// The Environment maps variables to values, local to a specific clause.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Environment {
-    mapping: HashMap<Variable, Value>,
-}
-
-impl Environment {
-    /// Create an empty environment.
-    pub fn empty() -> Self {
-        Environment {
-            mapping: HashMap::new(),
-        }
-    }
-
-    /// Create an environemt for a symbol with the given arguments.
-    ///
-    /// Local variables to the clause are assigned to placeholders.
-    pub fn for_symbol(
-        symbol: &Symbol,
-        arguments: &Vec<Value>,
-        placeholder_gen: &mut PlaceholderGenerator,
-    ) -> Result<Self, EngineError> {
-        if symbol.parameters.len() != arguments.len() {
-            return Err(EngineError::UnexpectedParamNum {
-                expected: symbol.parameters.len(),
-                got: arguments.len(),
-            });
-        }
-
-        let mut mapping = HashMap::with_capacity(symbol.parameters.len() + symbol.local_vars.len());
-
-        for (var, value) in symbol.parameters.iter().zip(arguments) {
-            mapping.insert(var.clone(), value.clone());
-        }
-
-        for var in symbol.local_vars.iter() {
-            mapping.insert(var.clone(), placeholder_gen.new_placeholder());
-        }
-
-        Ok(Environment { mapping })
-    }
-
-    /// Create an environment for a query.
-    pub fn for_query(
-        local_vars: Vec<Variable>,
-        placeholder_gen: &mut PlaceholderGenerator,
-    ) -> Self {
-        let mut mapping = HashMap::with_capacity(local_vars.len());
-
-        for var in local_vars.iter() {
-            mapping.insert(var.clone(), placeholder_gen.new_placeholder());
-        }
-
-        Environment { mapping }
-    }
-
-    /// Clear all variable mappings in this environment.
-    pub fn clear(&mut self) {
-        self.mapping.clear();
-    }
-
-    /// Check if this environment is empty.
-    pub fn is_empty(&self) -> bool {
-        self.mapping.is_empty()
-    }
-
-    /// Create a new environment from a given clause and existing environent.
-    ///
-    /// The other environment is used to get parameter values.
-    pub fn from_clause(
-        clause: &Clause,
-        arguments: &[Variable],
-        env: &Environment,
-        equiv: &Equivalence,
-        placeholder_gen: &mut PlaceholderGenerator,
-    ) -> Result<Self, EngineError> {
-        let values = arguments
-            .iter()
-            .map(|var| env.get(var, equiv))
-            .collect::<Result<Vec<Value>, EngineError>>()?;
-
-        Environment::for_symbol(&clause.head, &values, placeholder_gen)
-    }
-
-    /// Get the value of the given variable.
-    /// This actually returns the set representative of the variable's value.
-    pub fn get(&self, variable: &Variable, equiv: &Equivalence) -> Result<Value, EngineError> {
-        let value = self
-            .mapping
-            .get(variable)
-            .ok_or_else(|| EngineError::UndefinedVar(variable.clone()))?;
-
-        equiv.set_representative(value)
-    }
-}
-
-impl std::fmt::Display for Environment {
+impl std::fmt::Display for Query {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Handle empty environment
-        if self.mapping.is_empty() {
-            write!(f, "<empty>")?;
-            return Ok(());
-        }
-
-        let mut first = true;
-
-        for (var, value) in self.mapping.iter() {
-            if !first {
-                write!(f, ", ")?;
-            }
-            write!(f, "{} = {:?}", var, value)?;
-            first = false;
-        }
-
-        Ok(())
-    }
-}
-
-/// The Clause Database provides a mapping from clause names and arities to a list clauses.
-/// Clauses are returned in the same order that they are defined in the program.
-pub struct ClauseDatabase {
-    clauses: HashMap<(String, usize), Vec<Clause>>,
-}
-
-impl ClauseDatabase {
-    /// Create a new clause database.
-    /// Clauses will always be returned in the same order as they appear in `program`.
-    pub fn new(program: Vec<Clause>) -> Self {
-        let mut clauses: HashMap<(String, usize), Vec<Clause>> = HashMap::new();
-
-        for clause in program {
-            let key = (clause.functor().to_string(), clause.arity());
-
-            if let Some(vec) = clauses.get_mut(&key) {
-                vec.push(clause);
-            } else {
-                clauses.insert(key, vec![clause]);
-            }
-        }
-
-        ClauseDatabase { clauses }
-    }
-
-    /// Get the clauses associated with the given functor and arity.
-    /// Will return an empty list if functor/arity does not exist in the database.
-    pub fn get(&self, functor: &str, arity: usize) -> Vec<Clause> {
-        self.clauses
-            .get(&(functor.to_string(), arity))
-            .unwrap_or(&Vec::new())
-            .to_vec()
-    }
-}
-
-impl Default for ClauseDatabase {
-    fn default() -> Self {
-        ClauseDatabase::new(Vec::new())
-    }
-}
-
-/// Stores the equivalence relations for variables in the environment.
-#[derive(Clone)]
-pub struct Equivalence {
-    equiv: HashMap<Value, Value>,
-}
-
-impl Equivalence {
-    /// Create a new equivalence.
-    pub fn new() -> Self {
-        Equivalence {
-            equiv: HashMap::new(),
-        }
-    }
-
-    /// Get the set representative of a value.
-    pub fn set_representative(&self, value: &Value) -> Result<Value, EngineError> {
-        if let Some(value) = self.equiv.get(value) {
-            self.set_representative(value)
-        } else {
-            Ok(value.clone())
-        }
-    }
-
-    /// Attempt to unify two values.
-    pub fn unify(&mut self, val1: &Value, val2: &Value) -> Result<(), EngineError> {
-        if val1 == val2 {
-            return Ok(());
-        }
-
-        // A placeholder (unassigned) value always unifies
-        if matches!(val1, Value::Placeholder(_)) {
-            self.equiv.insert(val1.clone(), val2.clone());
-
-            return Ok(());
-        } else if matches!(val2, Value::Placeholder(_)) {
-            self.equiv.insert(val2.clone(), val1.clone());
-
-            return Ok(());
-        }
-
-        // For a compound, we unify each term
-        if let Value::Ground(functor1, args1) = val1
-            && let Value::Ground(functor2, args2) = val2
-        {
-            if functor1 != functor2 || args1.len() != args2.len() {
-                return Err(EngineError::CannotUnifyTerms(val1.clone(), val2.clone()));
-            }
-
-            for (arg1, arg2) in args1.iter().zip(args2.iter()) {
-                self.unify(arg1, arg2)?;
-            }
-
-            return Ok(());
-        }
-
-        // Otherwise, cannot unify
-        Err(EngineError::CannotUnifyTerms(val1.clone(), val2.clone()))
-    }
-}
-
-impl Default for Equivalence {
-    fn default() -> Self {
-        Equivalence::new()
+        write!(f, "?- {}", self.goal)
     }
 }
 
@@ -772,11 +520,11 @@ mod tests {
         let n = Value::num(10);
         let p = Value::Placeholder(5);
 
-        assert_eq!(n.number(), Some(10));
-        assert_eq!(p.number(), None);
+        assert_eq!(n.get_number(), Some(10));
+        assert_eq!(p.get_number(), None);
 
-        assert_eq!(n.placeholder_id(), None);
-        assert_eq!(p.placeholder_id(), Some(5));
+        assert_eq!(n.get_placeholder_id(), None);
+        assert_eq!(p.get_placeholder_id(), Some(5));
     }
 
     #[test]
@@ -854,7 +602,7 @@ mod tests {
         assert_eq!(result, 20);
 
         let mut env = Environment::empty();
-        env.mapping.insert(Variable::new("X"), Value::num(3));
+        env.assign(&Variable::new("X"), Value::num(3));
 
         let expr = Expression::binary(
             Expression::binary(20, 5, ArithmeticOp::Subtract),
@@ -869,21 +617,21 @@ mod tests {
     #[test]
     fn test_rhs_term() {
         let mut env = Environment::empty();
-        env.mapping.insert(Variable::new("A"), Value::num(1));
-        env.mapping.insert(Variable::new("B"), Value::num(2));
+        env.assign(&Variable::new("A"), Value::num(1));
+        env.assign(&Variable::new("B"), Value::num(2));
 
         let equiv = Equivalence::new();
 
-        let term = RHSTerm::Number(42);
+        let term = RHSTerm::Num(42);
         let value = term.evaluate(&env, &equiv).unwrap();
         assert_eq!(value, Value::num(42));
 
-        let term = RHSTerm::Expression(Expression::binary(10, 5, ArithmeticOp::Add));
+        let term = RHSTerm::Expr(Expression::binary(10, 5, ArithmeticOp::Add));
         let value = term.evaluate(&env, &equiv).unwrap();
         assert_eq!(value, Value::num(15));
 
         let symbol = Symbol::new("func", var_vec!["A", "B"], vec![]);
-        let term = RHSTerm::Symbol(symbol);
+        let term = RHSTerm::Sym(symbol);
         let value = term.evaluate(&env, &equiv).unwrap();
         assert_eq!(
             value,
@@ -924,8 +672,8 @@ mod tests {
         let x_value = env.get(&Variable::new("X"), &equiv).unwrap();
         let y_value = env.get(&Variable::new("Y"), &equiv).unwrap();
 
-        assert!(x_value.placeholder_id().is_some());
-        assert!(y_value.placeholder_id().is_some());
+        assert!(x_value.get_placeholder_id().is_some());
+        assert!(y_value.get_placeholder_id().is_some());
         assert_ne!(x_value, y_value);
     }
 

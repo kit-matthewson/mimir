@@ -3,36 +3,29 @@
 //! Contains the internal representation definitions and engine itself.
 
 pub mod representation;
+pub mod state;
 
 use crate::error::EngineError;
+
 pub use representation::*;
+pub use state::*;
 
 /// An execution engine.
 pub struct Engine {
     db: ClauseDatabase,
 }
 
+/// The current state of the engine during execution.
+///
+/// Contains:
+/// - The current environment, which maps variables to values.
+/// - The current equivalence, which maps terms to their unified representatives.
 struct State {
     env: Environment,
     equiv: Equivalence,
     goal_stack: Vec<Goal>,
     choice_stack: Vec<Choice>,
     placeholder_gen: PlaceholderGenerator,
-}
-
-/// A Prolog query.
-#[derive(Clone, Debug)]
-pub struct Query {
-    /// Local variables of the query.
-    pub local_vars: Vec<Variable>,
-    /// The goal of the query.
-    pub goal: Goal,
-}
-
-impl std::fmt::Display for Query {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "?- {}", self.goal)
-    }
 }
 
 impl State {
@@ -57,7 +50,7 @@ impl Engine {
         let mut placeholder_gen = PlaceholderGenerator::new();
 
         let mut state = State {
-            env: Environment::for_query(query.local_vars, &mut placeholder_gen),
+            env: Environment::for_query(&query, &mut placeholder_gen),
             equiv: Equivalence::new(),
             goal_stack: vec![query.goal],
             choice_stack: Vec::new(),
@@ -114,8 +107,8 @@ impl Engine {
                 }
             }
 
-            Goal::Check { functor, arguments } => {
-                self.handle_check(state, functor, arguments)?;
+            Goal::Check { functor, params } => {
+                self.handle_check(state, functor, params)?;
             }
 
             Goal::Restore(new_env) => state.env = new_env,
@@ -151,24 +144,27 @@ impl Engine {
         var2: Variable,
         op: RelationalOp,
     ) -> Result<(), EngineError> {
+        // Get the values of both variables
         let val1 = state.env.get(&var1, &state.equiv)?;
         let val2 = state.env.get(&var2, &state.equiv)?;
 
         // Ensure both are numbers
-        let num1 = if let Some(num) = val1.number() {
+        let num1 = if let Some(num) = val1.get_number() {
             num
         } else {
             return Err(EngineError::NotANumber(var1));
         };
 
-        let num2 = if let Some(num) = val2.number() {
+        let num2 = if let Some(num) = val2.get_number() {
             num
         } else {
             return Err(EngineError::NotANumber(var2));
         };
 
+        // Evaluate the relation
         let result = op.evaluate(num1, num2);
 
+        // If the relation is false, push a failure goal
         if !result {
             state.goal_stack.push(Goal::Bool(false));
         }
@@ -180,21 +176,23 @@ impl Engine {
         &self,
         state: &mut State,
         functor: String,
-        arguments: Vec<Variable>,
+        params: Vec<Variable>,
     ) -> Result<(), EngineError> {
-        let clauses = self.db.get(&functor, arguments.len());
+        // Try and get clauses for the given functor and arity
+        let clauses = self.db.get(&functor, params.len());
         if clauses.is_empty() {
-            return Err(EngineError::ClauseNotFound(functor, arguments.len()));
+            return Err(EngineError::ClauseNotFound(functor, params.len()));
         }
 
+        // Push a restore goal to revert the environment after trying all clauses
         state.goal_stack.push(Goal::Restore(state.env.clone()));
 
-        let clause = clauses.first().unwrap();
-
+        // Push choices for all but the first clause
+        // The first clause is handled directly so that we do not have not make an extra choice
         for clause in clauses.iter().skip(1).rev() {
-            let clause_env = Environment::from_clause(
-                clause,
-                &arguments,
+            let clause_env = Environment::for_symbol_with_params(
+                &clause.head,
+                &params,
                 &state.env,
                 &state.equiv,
                 &mut state.placeholder_gen,
@@ -210,14 +208,18 @@ impl Engine {
             state.choice_stack.push(choice);
         }
 
-        state.env = Environment::from_clause(
-            clause,
-            &arguments,
+        // Handle the first clause directly
+        let first_clause = clauses.first().unwrap();
+
+        state.env = Environment::for_symbol_with_params(
+            &first_clause.head,
+            &params,
             &state.env,
             &state.equiv,
             &mut state.placeholder_gen,
         )?;
-        state.goal_stack.push(clause.body.clone());
+
+        state.goal_stack.push(first_clause.body.clone());
 
         Ok(())
     }

@@ -193,7 +193,7 @@ pub fn variable(input: &str) -> IResult<&str, ast::Term> {
 /// Parses a compound.
 ///
 /// A compound has a functor and argument list.
-/// Arguments are any terms separated by commas and enclosed in parentheses.
+/// arguments are any terms separated by commas and enclosed in parentheses.
 ///
 /// # Example
 /// ```
