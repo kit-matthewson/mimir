@@ -226,4 +226,54 @@ impl Engine {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use crate::{clause, var_vec};
+
+    use super::*;
+
+    #[test]
+    fn test_engine_simple_query() {
+        let program = vec![clause!(is_ten(T1) { T2 } :- Goal::Conjunction(
+            Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::Num(10))),
+            Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T2")))
+        ))];
+
+        let engine = Engine::new(program);
+
+        // Query: is_ten(X)
+        let query = Query {
+            local_vars: var_vec!["X"],
+            goal: Goal::Check {
+                functor: "is_ten".to_string(),
+                params: var_vec!["X"],
+            },
+        };
+
+        let solutions = engine.execute(query.clone()).unwrap();
+
+        let mut results = vec![];
+        for (env, equiv) in solutions.iter() {
+            let value = env.get(&Variable::new("X"), equiv).unwrap();
+            results.push(value);
+        }
+
+        assert_eq!(results.len(), 1);
+        assert!(results.contains(&Value::Number(10)));
+
+        // Query: is_ten(5)
+        let query_fail = Query {
+            local_vars: var_vec!["X"],
+            goal: Goal::Conjunction(
+                Box::new(Goal::Check {
+                    functor: "is_ten".to_string(),
+                    params: var_vec!["X"],
+                }),
+                Box::new(Goal::Assign(Variable::new("X"), RHSTerm::Num(5))),
+            ),
+        };
+
+        // The engine currently returns an error if terms cannot be unified
+        let solutions = engine.execute(query_fail.clone());
+        assert!(solutions.is_err());
+    }
+}
