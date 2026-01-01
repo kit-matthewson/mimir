@@ -2,8 +2,8 @@
 //!
 //! Contains the internal representation definitions and engine itself.
 
-pub mod representation;
-pub mod state;
+mod representation;
+mod state;
 
 use crate::error::EngineError;
 

@@ -2,7 +2,7 @@
 //!
 //! Contains the AST definitions and parsing functions.
 
-pub mod ast;
+mod ast;
 
 pub use ast::*;
 
@@ -74,13 +74,13 @@ pub fn atom_name(input: &str) -> IResult<&str, String> {
 /// # Example
 /// ```
 /// # use mimir::parser::atom;
-/// # use mimir::parser::ast::Term;
+/// # use mimir::parser::Term;
 /// let (_, atom) = atom("atom").unwrap();
 /// assert_eq!(atom, Term::atom("atom"));
 /// ```
-pub fn atom(input: &str) -> IResult<&str, ast::Term> {
+pub fn atom(input: &str) -> IResult<&str, Term> {
     let (input, name) = atom_name(input)?;
-    let atom = ast::Term::atom(name);
+    let atom = Term::atom(name);
 
     Ok((input, atom))
 }
@@ -92,11 +92,11 @@ pub fn atom(input: &str) -> IResult<&str, ast::Term> {
 /// # Example
 /// ```
 /// # use mimir::parser::quoted_atom;
-/// # use mimir::parser::ast::Term;
+/// # use mimir::parser::Term;
 /// let (_, atom) = quoted_atom("\"quoted atom\"").unwrap();
 /// assert_eq!(atom, Term::atom("quoted atom"));
 /// ```
-pub fn quoted_atom(input: &str) -> IResult<&str, ast::Term> {
+pub fn quoted_atom(input: &str) -> IResult<&str, Term> {
     let (input, name) = delimited(
         tag("\""),
         verify(take_till(|c| c == '"'), |content: &str| {
@@ -106,7 +106,7 @@ pub fn quoted_atom(input: &str) -> IResult<&str, ast::Term> {
     )
     .parse(input)?;
 
-    let atom = ast::Term::atom(name);
+    let atom = Term::atom(name);
 
     Ok((input, atom))
 }
@@ -119,11 +119,11 @@ pub fn quoted_atom(input: &str) -> IResult<&str, ast::Term> {
 /// # Example
 /// ```
 /// # use mimir::parser::number;
-/// # use mimir::parser::ast::Term;
+/// # use mimir::parser::Term;
 /// let (_, num) = number("1_234_567").unwrap();
 /// assert_eq!(num, Term::number(1234567));
 /// ```
-pub fn number(input: &str) -> IResult<&str, ast::Term> {
+pub fn number(input: &str) -> IResult<&str, Term> {
     let (input, negative) = opt(tag("-")).parse(input)?;
     let (input, digits) = recognize(many1(one_of("01234567890_"))).parse(input)?;
 
@@ -161,7 +161,7 @@ pub fn number(input: &str) -> IResult<&str, ast::Term> {
         num = -num;
     }
 
-    Ok((input, ast::Term::Number(num)))
+    Ok((input, Term::Number(num)))
 }
 
 /// Parses a single variable.
@@ -171,21 +171,21 @@ pub fn number(input: &str) -> IResult<&str, ast::Term> {
 /// # Example
 /// ```
 /// # use mimir::parser::variable;
-/// # use mimir::parser::ast::Term;
+/// # use mimir::parser::Term;
 /// let (_, var) = variable("VarName").unwrap();
 /// assert_eq!(var, Term::var("VarName"));
 /// ```
-pub fn variable(input: &str) -> IResult<&str, ast::Term> {
+pub fn variable(input: &str) -> IResult<&str, Term> {
     let (input, head) = one_of(VAR_START_CHARS).parse(input)?;
     let (input, tail) = alphanumeric0(input)?;
 
     let name = format!("{}{}", head, tail);
 
     if name == "_" {
-        return Ok((input, ast::Term::Wildcard));
+        return Ok((input, Term::Wildcard));
     }
 
-    let var = ast::Term::var(name);
+    let var = Term::var(name);
 
     Ok((input, var))
 }
@@ -198,17 +198,17 @@ pub fn variable(input: &str) -> IResult<&str, ast::Term> {
 /// # Example
 /// ```
 /// # use mimir::parser::compound;
-/// # use mimir::parser::ast::Term;
+/// # use mimir::parser::Term;
 /// let (_, comp) = compound("f(a, b, c)").unwrap();
 /// assert_eq!(comp, Term::compound("f", vec![Term::atom("a"), Term::atom("b"), Term::atom("c")]));
 /// ```
-pub fn compound(input: &str) -> IResult<&str, ast::Term> {
+pub fn compound(input: &str) -> IResult<&str, Term> {
     let (input, functor) = atom_name(input)?;
     let (input, _) = multispace0(input)?;
     let (input, args) =
         delimited(tag("("), separated_list0(ws(tag(",")), term), tag(")")).parse(input)?;
 
-    let compound = ast::Term::compound(functor, args);
+    let compound = Term::compound(functor, args);
 
     Ok((input, compound))
 }
@@ -220,14 +220,14 @@ pub fn compound(input: &str) -> IResult<&str, ast::Term> {
 /// # Example
 /// ```
 /// # use mimir::parser::term;
-/// # use mimir::parser::ast::Term;
+/// # use mimir::parser::Term;
 /// let (_, t) = term("atom").unwrap();
 /// assert_eq!(t, Term::atom("atom"));
 ///
 /// let (_, t) = term("Var").unwrap();
 /// assert_eq!(t, Term::var("Var"));
 ///```
-pub fn term(input: &str) -> IResult<&str, ast::Term> {
+pub fn term(input: &str) -> IResult<&str, Term> {
     // Compound has to be checked before atom, because compound has an atom as a prefix
     alt((compound, atom, quoted_atom, variable, number, list)).parse(input)
 }
@@ -240,7 +240,7 @@ pub fn term(input: &str) -> IResult<&str, ast::Term> {
 /// # Example
 /// ```
 /// # use mimir::parser::rhs_term;
-/// # use mimir::parser::ast::Term;
+/// # use mimir::parser::Term;
 /// let (_, t) = rhs_term("X \\= Y").unwrap();
 /// assert_eq!(t, Term::compound("not_equal", vec![Term::var("X"), Term::var("Y")]));
 ///
@@ -250,7 +250,7 @@ pub fn term(input: &str) -> IResult<&str, ast::Term> {
 /// # TODO
 /// - Does not handle operator precedence or parentheses.
 /// - Accepts statements such as `A = B = C`, which may not be desired.
-pub fn rhs_term(input: &str) -> IResult<&str, ast::Term> {
+pub fn rhs_term(input: &str) -> IResult<&str, Term> {
     // A dict of operators and their corresponding functor names
     let operators = vec![
         // Equality
@@ -276,7 +276,7 @@ pub fn rhs_term(input: &str) -> IResult<&str, ast::Term> {
 
         if let Ok((input, parsed)) = parser.parse(input) {
             let (left, _, right) = parsed;
-            let term = ast::Term::compound(functor.to_string(), vec![left, right]);
+            let term = Term::compound(functor.to_string(), vec![left, right]);
             return Ok((input, term));
         }
     }
@@ -289,7 +289,7 @@ pub fn rhs_term(input: &str) -> IResult<&str, ast::Term> {
 ///
 /// Lists can contain elements seperated by commas or be for pattern matching, with variables separated by `|`.
 /// Lists are converted into nested `cons/2` compounds ending with the `nil/0` atom.
-pub fn list(input: &str) -> IResult<&str, ast::Term> {
+pub fn list(input: &str) -> IResult<&str, Term> {
     // [a, b, c]
     let comma_list = separated_list0(tag(","), ws(term));
 
@@ -312,9 +312,9 @@ pub fn list(input: &str) -> IResult<&str, ast::Term> {
         delimited(tag("["), alt((pattern_list, comma_list)), tag("]")).parse(input)?;
 
     // Convert to nested cons/2 compounds ending with nil/0
-    let mut list_term = ast::Term::atom("nil");
+    let mut list_term = Term::atom("nil");
     for element in elements.into_iter().rev() {
-        list_term = ast::Term::compound("cons", vec![element, list_term]);
+        list_term = Term::compound("cons", vec![element, list_term]);
     }
 
     Ok((input, list_term))
@@ -329,7 +329,7 @@ pub fn list(input: &str) -> IResult<&str, ast::Term> {
 /// # Example
 /// ```
 /// # use mimir::parser::clause;
-/// # use mimir::parser::ast::{Term, Clause};
+/// # use mimir::parser::{Term, Clause};
 /// let input = "parent(X, Y) :- father(X, Y), mother(X, Y).";
 /// let (_, clause) = clause(input).unwrap();
 /// let expected = Clause::rule(
@@ -341,13 +341,13 @@ pub fn list(input: &str) -> IResult<&str, ast::Term> {
 /// );
 /// assert_eq!(clause, expected);
 /// ```
-pub fn clause(input: &str) -> IResult<&str, ast::Clause> {
+pub fn clause(input: &str) -> IResult<&str, Clause> {
     let (input, head) = compound(input)?;
     let (input, _) = ws(tag(":-")).parse(input)?;
     let (input, body) = separated_list1(ws(tag(",")), rhs_term).parse(input)?;
     let (input, _) = ws(tag(".")).parse(input)?;
 
-    Ok((input, ast::Clause::rule(head, body)))
+    Ok((input, Clause::rule(head, body)))
 }
 
 /// Parses a fact, a special case of a clause with no body (and so no ':-').
@@ -355,7 +355,7 @@ pub fn clause(input: &str) -> IResult<&str, ast::Clause> {
 /// # Example
 /// ```
 /// # use mimir::parser::fact;
-/// # use mimir::parser::ast::{Term, Clause};
+/// # use mimir::parser::{Term, Clause};
 /// let input = "father(john, mary).";
 /// let (_, fact) = fact(input).unwrap();
 /// let expected = Clause::fact(
@@ -363,15 +363,15 @@ pub fn clause(input: &str) -> IResult<&str, ast::Clause> {
 /// );
 /// assert_eq!(fact, expected);
 /// ```
-pub fn fact(input: &str) -> IResult<&str, ast::Clause> {
+pub fn fact(input: &str) -> IResult<&str, Clause> {
     let (input, head) = compound(input)?;
     let (input, _) = ws(tag(".")).parse(input)?;
 
-    Ok((input, ast::Clause::fact(head)))
+    Ok((input, Clause::fact(head)))
 }
 
 /// Parses a program, a series of clauses and facts.
-pub fn program(input: &str) -> IResult<&str, Vec<ast::Clause>> {
+pub fn program(input: &str) -> IResult<&str, Vec<Clause>> {
     many0(ws(alt((clause, fact)))).parse(input)
 }
 
@@ -382,26 +382,26 @@ mod tests {
     #[test]
     fn test_atom_basic() {
         let (remaining, parsed) = atom("t").unwrap();
-        assert_eq!(parsed, ast::Term::atom("t"));
+        assert_eq!(parsed, Term::atom("t"));
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = atom("text").unwrap();
-        assert_eq!(parsed, ast::Term::atom("text"));
+        assert_eq!(parsed, Term::atom("text"));
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = atom("tExt").unwrap();
-        assert_eq!(parsed, ast::Term::atom("tExt"));
+        assert_eq!(parsed, Term::atom("tExt"));
         assert_eq!(remaining, "");
     }
 
     #[test]
     fn test_atom_with_suffix() {
         let (remaining, parsed) = atom("text ").unwrap();
-        assert_eq!(parsed, ast::Term::atom("text"));
+        assert_eq!(parsed, Term::atom("text"));
         assert_eq!(remaining, " ");
 
         let (remaining, parsed) = atom("text.").unwrap();
-        assert_eq!(parsed, ast::Term::atom("text"));
+        assert_eq!(parsed, Term::atom("text"));
         assert_eq!(remaining, ".");
     }
 
@@ -414,14 +414,14 @@ mod tests {
     #[test]
     fn test_quoted_atom() {
         let (remaining, parsed) = quoted_atom("\"text text\"").unwrap();
-        assert_eq!(parsed, ast::Term::atom("text text"));
+        assert_eq!(parsed, Term::atom("text text"));
         assert_eq!(remaining, "");
     }
 
     #[test]
     fn test_quoted_atom_with_suffix() {
         let (remaining, parsed) = quoted_atom("\"text text\".").unwrap();
-        assert_eq!(parsed, ast::Term::atom("text text"));
+        assert_eq!(parsed, Term::atom("text text"));
         assert_eq!(remaining, ".");
     }
 
@@ -440,29 +440,29 @@ mod tests {
     #[test]
     fn test_number_basic() {
         let (remaining, parsed) = number("1234567890").unwrap();
-        assert_eq!(parsed, ast::Term::number(1234567890));
+        assert_eq!(parsed, Term::number(1234567890));
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = number("1_234_567_890").unwrap();
-        assert_eq!(parsed, ast::Term::number(1234567890));
+        assert_eq!(parsed, Term::number(1234567890));
         assert_eq!(remaining, "");
     }
 
     #[test]
     fn test_number_with_suffix() {
         let (remaining, parsed) = number("10.").unwrap();
-        assert_eq!(parsed, ast::Term::number(10));
+        assert_eq!(parsed, Term::number(10));
         assert_eq!(remaining, ".");
 
         let (remaining, parsed) = number("10 ").unwrap();
-        assert_eq!(parsed, ast::Term::number(10));
+        assert_eq!(parsed, Term::number(10));
         assert_eq!(remaining, " ");
     }
 
     #[test]
     fn test_number_negative() {
         let (remaining, parsed) = number("-10").unwrap();
-        assert_eq!(parsed, ast::Term::number(-10));
+        assert_eq!(parsed, Term::number(-10));
         assert_eq!(remaining, "");
 
         let parsed = number("-a");
@@ -490,30 +490,30 @@ mod tests {
     #[test]
     fn test_variable_basic() {
         let (remaining, parsed) = variable("T").unwrap();
-        assert_eq!(parsed, ast::Term::var("T"));
+        assert_eq!(parsed, Term::var("T"));
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = variable("Text").unwrap();
-        assert_eq!(parsed, ast::Term::var("Text"));
+        assert_eq!(parsed, Term::var("Text"));
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = variable("TeXt").unwrap();
-        assert_eq!(parsed, ast::Term::var("TeXt"));
+        assert_eq!(parsed, Term::var("TeXt"));
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = variable("_text").unwrap();
-        assert_eq!(parsed, ast::Term::var("_text"));
+        assert_eq!(parsed, Term::var("_text"));
         assert_eq!(remaining, "");
     }
 
     #[test]
     fn test_variable_with_suffix() {
         let (remaining, parsed) = variable("Text ").unwrap();
-        assert_eq!(parsed, ast::Term::var("Text"));
+        assert_eq!(parsed, Term::var("Text"));
         assert_eq!(remaining, " ");
 
         let (remaining, parsed) = variable("Text.").unwrap();
-        assert_eq!(parsed, ast::Term::var("Text"));
+        assert_eq!(parsed, Term::var("Text"));
         assert_eq!(remaining, ".");
     }
 
@@ -528,42 +528,21 @@ mod tests {
         let (remaining, parsed) = compound("f(a, b, c)").unwrap();
         assert_eq!(
             parsed,
-            ast::Term::compound(
-                "f",
-                vec![
-                    ast::Term::atom("a"),
-                    ast::Term::atom("b"),
-                    ast::Term::atom("c")
-                ]
-            )
+            Term::compound("f", vec![Term::atom("a"), Term::atom("b"), Term::atom("c")])
         );
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = compound("f  (a,b ,  c)").unwrap();
         assert_eq!(
             parsed,
-            ast::Term::compound(
-                "f",
-                vec![
-                    ast::Term::atom("a"),
-                    ast::Term::atom("b"),
-                    ast::Term::atom("c")
-                ]
-            )
+            Term::compound("f", vec![Term::atom("a"), Term::atom("b"), Term::atom("c")])
         );
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = compound("f(a, X, c)").unwrap();
         assert_eq!(
             parsed,
-            ast::Term::compound(
-                "f",
-                vec![
-                    ast::Term::atom("a"),
-                    ast::Term::var("X"),
-                    ast::Term::atom("c")
-                ]
-            )
+            Term::compound("f", vec![Term::atom("a"), Term::var("X"), Term::atom("c")])
         );
         assert_eq!(remaining, "");
     }
@@ -573,12 +552,12 @@ mod tests {
         let (remaining, parsed) = compound("f(a, g(n, m), c)").unwrap();
         assert_eq!(
             parsed,
-            ast::Term::compound(
+            Term::compound(
                 "f",
                 vec![
-                    ast::Term::atom("a"),
-                    ast::Term::compound("g", vec![ast::Term::atom("n"), ast::Term::atom("m"),]),
-                    ast::Term::atom("c")
+                    Term::atom("a"),
+                    Term::compound("g", vec![Term::atom("n"), Term::atom("m"),]),
+                    Term::atom("c")
                 ]
             )
         );
@@ -588,21 +567,21 @@ mod tests {
     #[test]
     fn test_term() {
         let (remaining, parsed) = term("atom").unwrap();
-        assert_eq!(parsed, ast::Term::atom("atom"));
+        assert_eq!(parsed, Term::atom("atom"));
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = term("Var").unwrap();
-        assert_eq!(parsed, ast::Term::var("Var"));
+        assert_eq!(parsed, Term::var("Var"));
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = term("123").unwrap();
-        assert_eq!(parsed, ast::Term::number(123));
+        assert_eq!(parsed, Term::number(123));
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = term("f(a, b)").unwrap();
         assert_eq!(
             parsed,
-            ast::Term::compound("f", vec![ast::Term::atom("a"), ast::Term::atom("b")])
+            Term::compound("f", vec![Term::atom("a"), Term::atom("b")])
         );
         assert_eq!(remaining, "");
     }
@@ -610,11 +589,11 @@ mod tests {
     #[test]
     fn test_clause() {
         let input = "parent(X, Y) :- father(X, Y), mother(X, Y).";
-        let expected = ast::Clause::rule(
-            ast::Term::compound("parent", vec![ast::Term::var("X"), ast::Term::var("Y")]),
+        let expected = Clause::rule(
+            Term::compound("parent", vec![Term::var("X"), Term::var("Y")]),
             vec![
-                ast::Term::compound("father", vec![ast::Term::var("X"), ast::Term::var("Y")]),
-                ast::Term::compound("mother", vec![ast::Term::var("X"), ast::Term::var("Y")]),
+                Term::compound("father", vec![Term::var("X"), Term::var("Y")]),
+                Term::compound("mother", vec![Term::var("X"), Term::var("Y")]),
             ],
         );
 
@@ -631,9 +610,9 @@ mod tests {
     #[test]
     fn test_fact() {
         let input = "father(john, mary).";
-        let expected = ast::Clause::fact(ast::Term::compound(
+        let expected = Clause::fact(Term::compound(
             "father",
-            vec![ast::Term::atom("john"), ast::Term::atom("mary")],
+            vec![Term::atom("john"), Term::atom("mary")],
         ));
 
         let (remaining, parsed) = fact(input).unwrap();
@@ -646,24 +625,21 @@ mod tests {
         let (remaining, parsed) = rhs_term("X \\= Y").unwrap();
         assert_eq!(
             parsed,
-            ast::Term::compound("not_equal", vec![ast::Term::var("X"), ast::Term::var("Y")])
+            Term::compound("not_equal", vec![Term::var("X"), Term::var("Y")])
         );
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = rhs_term("A = B").unwrap();
         assert_eq!(
             parsed,
-            ast::Term::compound("equal", vec![ast::Term::var("A"), ast::Term::var("B")])
+            Term::compound("equal", vec![Term::var("A"), Term::var("B")])
         );
         assert_eq!(remaining, "");
 
         let (remaining, parsed) = rhs_term("X =< Y").unwrap();
         assert_eq!(
             parsed,
-            ast::Term::compound(
-                "less_than_equal",
-                vec![ast::Term::var("X"), ast::Term::var("Y")]
-            )
+            Term::compound("less_than_equal", vec![Term::var("X"), Term::var("Y")])
         );
         assert_eq!(remaining, "");
     }
@@ -673,11 +649,11 @@ mod tests {
         let (remaining, parsed) = rhs_term("A = B + C").unwrap();
         assert_eq!(
             parsed,
-            ast::Term::compound(
+            Term::compound(
                 "equal",
                 vec![
-                    ast::Term::var("A"),
-                    ast::Term::compound("add", vec![ast::Term::var("B"), ast::Term::var("C")])
+                    Term::var("A"),
+                    Term::compound("add", vec![Term::var("B"), Term::var("C")])
                 ]
             )
         );
@@ -687,12 +663,12 @@ mod tests {
     #[test]
     fn test_clause_with_rhs_terms() {
         let input = "sibling(X, Y) :- parent(Z, X), parent(Z, Y), X \\= Y.";
-        let expected = ast::Clause::rule(
-            ast::Term::compound("sibling", vec![ast::Term::var("X"), ast::Term::var("Y")]),
+        let expected = Clause::rule(
+            Term::compound("sibling", vec![Term::var("X"), Term::var("Y")]),
             vec![
-                ast::Term::compound("parent", vec![ast::Term::var("Z"), ast::Term::var("X")]),
-                ast::Term::compound("parent", vec![ast::Term::var("Z"), ast::Term::var("Y")]),
-                ast::Term::compound("not_equal", vec![ast::Term::var("X"), ast::Term::var("Y")]),
+                Term::compound("parent", vec![Term::var("Z"), Term::var("X")]),
+                Term::compound("parent", vec![Term::var("Z"), Term::var("Y")]),
+                Term::compound("not_equal", vec![Term::var("X"), Term::var("Y")]),
             ],
         );
 
@@ -706,18 +682,15 @@ mod tests {
         let (remaining, parsed) = list("[a, b, c]").unwrap();
         assert_eq!(
             parsed,
-            ast::Term::compound(
+            Term::compound(
                 "cons",
                 vec![
-                    ast::Term::atom("a"),
-                    ast::Term::compound(
+                    Term::atom("a"),
+                    Term::compound(
                         "cons",
                         vec![
-                            ast::Term::atom("b"),
-                            ast::Term::compound(
-                                "cons",
-                                vec![ast::Term::atom("c"), ast::Term::atom("nil")]
-                            )
+                            Term::atom("b"),
+                            Term::compound("cons", vec![Term::atom("c"), Term::atom("nil")])
                         ]
                     )
                 ]
@@ -728,18 +701,15 @@ mod tests {
         let (remaining, parsed) = list("[X, Y | Z]").unwrap();
         assert_eq!(
             parsed,
-            ast::Term::compound(
+            Term::compound(
                 "cons",
                 vec![
-                    ast::Term::var("X"),
-                    ast::Term::compound(
+                    Term::var("X"),
+                    Term::compound(
                         "cons",
                         vec![
-                            ast::Term::var("Y"),
-                            ast::Term::compound(
-                                "cons",
-                                vec![ast::Term::var("Z"), ast::Term::atom("nil")]
-                            )
+                            Term::var("Y"),
+                            Term::compound("cons", vec![Term::var("Z"), Term::atom("nil")])
                         ]
                     )
                 ]
@@ -750,21 +720,21 @@ mod tests {
         let (remaining, parsed) = list("[X, Y | [a, b]]").unwrap();
         assert_eq!(
             parsed,
-            ast::Term::compound(
+            Term::compound(
                 "cons",
                 vec![
-                    ast::Term::var("X"),
-                    ast::Term::compound(
+                    Term::var("X"),
+                    Term::compound(
                         "cons",
                         vec![
-                            ast::Term::var("Y"),
-                            ast::Term::compound(
+                            Term::var("Y"),
+                            Term::compound(
                                 "cons",
                                 vec![
-                                    ast::Term::atom("a"),
-                                    ast::Term::compound(
+                                    Term::atom("a"),
+                                    Term::compound(
                                         "cons",
-                                        vec![ast::Term::atom("b"), ast::Term::atom("nil")]
+                                        vec![Term::atom("b"), Term::atom("nil")]
                                     )
                                 ]
                             )

@@ -32,7 +32,7 @@ impl Term {
     ///
     /// # Example
     /// ```
-    /// # use mimir::parser::ast::Term;
+    /// # use mimir::parser::Term;
     /// let atom = Term::atom("example");
     /// assert_eq!(atom, Term::Atom("example".to_string()));
     /// ```
@@ -44,7 +44,7 @@ impl Term {
     ///
     /// # Example
     /// ```
-    /// # use mimir::parser::ast::Term;
+    /// # use mimir::parser::Term;
     /// let number = Term::number(42);
     /// assert_eq!(number, Term::Number(42));
     /// ```
@@ -58,7 +58,7 @@ impl Term {
     ///
     /// # Example
     /// ```
-    /// # use mimir::parser::ast::Term;
+    /// # use mimir::parser::Term;
     /// let var = Term::var("X");
     /// assert_eq!(var, Term::Variable("X".to_string()));
     /// ```
@@ -72,7 +72,7 @@ impl Term {
     ///
     /// # Example
     /// ```
-    /// # use mimir::parser::ast::Term;
+    /// # use mimir::parser::Term;
     /// let comp = Term::compound("f", vec![Term::atom("a"), Term::atom("b")]);
     /// assert_eq!(comp, Term::Compound { functor: "f".to_string(), args: vec![Term::atom("a"), Term::atom("b")] });
     /// ```
@@ -126,7 +126,7 @@ impl Clause {
     ///
     /// # Example
     /// ```
-    /// # use mimir::parser::ast::{Term, Clause};
+    /// # use mimir::parser::{Term, Clause};
     /// // father(john, mary).
     /// let fact = Clause::fact(Term::compound("father", vec![Term::atom("john"), Term::atom("mary")]));
     /// assert_eq!(fact, Clause { head: Term::compound("father", vec![
@@ -143,7 +143,7 @@ impl Clause {
     ///
     /// # Example
     /// ```
-    /// # use mimir::parser::ast::{Term, Clause};
+    /// # use mimir::parser::{Term, Clause};
     /// // parent(X, Y) :- father(X, Y), mother(X, Y).
     /// let rule = Clause::rule(
     ///     Term::compound("parent", vec![Term::var("X"), Term::var("Y")]),

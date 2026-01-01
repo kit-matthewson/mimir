@@ -1,6 +1,7 @@
 use mimir::{clause, engine::*, var_vec};
 
-fn main() -> Result<(), mimir::error::EngineError> {
+#[test]
+fn test_engine_simple_query() -> Result<(), mimir::error::EngineError> {
     let program = vec![
         clause!(is_ten(T1) { T2 } :- Goal::Conjunction(
             Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::Num(10))),
@@ -19,10 +20,6 @@ fn main() -> Result<(), mimir::error::EngineError> {
         ),
     ];
 
-    for clause in &program {
-        println!("{}", clause);
-    }
-
     let engine = Engine::new(program);
 
     let query = Query {
@@ -33,21 +30,17 @@ fn main() -> Result<(), mimir::error::EngineError> {
         },
     };
 
-    println!("\n{}", query);
-
     let solutions = engine.execute(query.clone())?;
 
+    let mut results = vec![];
     for solution in solutions.iter() {
-        print!("  ");
-        for var in &query.local_vars {
-            let value = solution.0.get(var, &solution.1)?;
-            print!("{} = {:?}", var, value);
-            if var != query.local_vars.last().unwrap() {
-                print!(", ");
-            }
-        }
-        println!();
+        let value = solution.0.get(&Variable::new("X"), &solution.1)?;
+        results.push(value);
     }
+
+    assert!(results.contains(&Value::Number(10)));
+    assert!(results.contains(&Value::Number(5)));
+    assert_eq!(results.len(), 2);
 
     Ok(())
 }

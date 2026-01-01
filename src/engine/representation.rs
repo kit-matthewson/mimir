@@ -549,6 +549,37 @@ macro_rules! var_vec {
     };
 }
 
+/// A macro for defining clauses.
+///
+/// # Example
+/// ```
+/// # use mimir::engine::{Clause, Symbol, Variable, Goal, RHSTerm};
+/// # use mimir::clause;
+///
+/// let is_ten = clause!(
+///     is_ten(T1) { T2 } :- Goal::Conjunction(
+///         Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::Num(10))),
+///         Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T2")))
+///     )
+/// );
+///
+/// assert_eq!(is_ten.head().functor(), "is_ten");
+/// assert_eq!(is_ten.arity(), 1);
+/// ```
+#[macro_export]
+macro_rules! clause {
+    ($name:ident ( $($p:ident),* ) { $($l:ident),* } :- $goal:expr) => {
+        Clause::new(
+            Symbol::new(
+                stringify!($name),
+                vec![$( Variable::new(stringify!($p)) ),*],
+                vec![$( Variable::new(stringify!($l)) ),*],
+            ),
+            $goal
+        )
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -562,7 +593,24 @@ mod tests {
         assert_eq!(
             vars,
             vec![Variable::new("A"), Variable::new("B"), Variable::new("C")]
-        )
+        );
+
+        let empty_vars: Vec<Variable> = var_vec![];
+        assert!(empty_vars.is_empty());
+    }
+
+    #[test]
+    fn test_clause_macro() {
+        let my_clause = clause!(
+            my_clause(X, Y) { Z } :-
+            Goal::Bool(true)
+        );
+
+        assert_eq!(my_clause.head().functor(), "my_clause");
+        assert_eq!(my_clause.head().parameters(), &var_vec!["X", "Y"]);
+        assert_eq!(my_clause.head().local_vars(), &var_vec!["Z"]);
+        assert_eq!(my_clause.arity(), 2);
+        assert_eq!(my_clause.body(), &Goal::Bool(true));
     }
 
     #[test]
