@@ -2,7 +2,9 @@
 //!
 //! Contains the AST definitions and parsing functions.
 //!
-//! TODO: Quoted atoms, strings
+//! # TODO:
+//! - Quoted atoms
+//! - Strings?
 
 pub mod ast;
 
@@ -149,7 +151,15 @@ impl Parseable for ast::Term {
     fn parse(input: &str) -> nom::IResult<&str, Self> {
         alt((
             |input| {
-                let (input, list) = ast::ConsList::parse(input)?;
+                let (input, _) = tag("[").parse(input)?;
+
+                // Prolog lists can be seperated by ',' or '|'
+                let (input, list) =
+                    separated_list0(ws(alt((tag(","), tag("|")))), ast::Term::parse)
+                        .parse(input)?;
+
+                let (input, _) = tag("]").parse(input)?;
+
                 Ok((input, Self::List(list)))
             },
             |input| {
@@ -259,53 +269,6 @@ impl Parseable for ast::Variable {
         } else {
             Ok((input, Self::Var(name.to_string())))
         }
-    }
-}
-
-impl Parseable for ast::ConsList {
-    /// Parses a list.
-    ///
-    /// # Example
-    /// ```
-    /// # use mimir::parser::{ast, Parseable};
-    /// let input = "[1, 2, 3]";
-    /// let (_, list) = ast::ConsList::parse(input).unwrap();
-    ///
-    /// assert_eq!(list.to_string(), input);
-    /// ````
-    fn parse(input: &str) -> nom::IResult<&str, Self> {
-        // [a, b, c]
-        let comma_list = separated_list0(tag(","), ws(ast::Term::parse));
-
-        // [X, Y | Z]
-        // [X, Y | [a, b, c]]
-        let pattern_list = separated_pair(
-            separated_list1(tag(","), ws(ast::Term::parse)),
-            ws(tag("|")),
-            alt((
-                delimited(
-                    tag("["),
-                    separated_list0(tag(","), ws(ast::Term::parse)),
-                    tag("]"),
-                ),
-                ast::Term::parse.map(|t| vec![t]),
-            )),
-        )
-        .map(|(mut head, mut tail)| {
-            head.append(&mut tail);
-            head
-        });
-
-        let (input, elements) =
-            delimited(tag("["), alt((pattern_list, comma_list)), tag("]")).parse(input)?;
-
-        let mut list = ast::ConsList::Empty;
-
-        for element in elements.iter().rev() {
-            list = ast::ConsList::List(Box::new(element.clone()), Box::new(list));
-        }
-
-        Ok((input, list))
     }
 }
 
@@ -597,41 +560,47 @@ mod tests {
 
     #[test]
     fn test_list_parsing() {
-        // TODO Tests for [H | T] etc
         let cases = vec![
             (
                 "[1, 2, 3]",
-                ast::ConsList::List(
-                    Box::new(ast::Term::Num(1)),
-                    Box::new(ast::ConsList::List(
-                        Box::new(ast::Term::Num(2)),
-                        Box::new(ast::ConsList::List(
-                            Box::new(ast::Term::Num(3)),
-                            Box::new(ast::ConsList::Empty),
-                        )),
-                    )),
-                ),
+                vec![ast::Term::Num(1), ast::Term::Num(2), ast::Term::Num(3)],
+            ),
+            ("[1, 2]", vec![ast::Term::Num(1), ast::Term::Num(2)]),
+            ("[1]", vec![ast::Term::Num(1)]),
+            ("[]", vec![]),
+            (
+                "[H | T]",
+                vec![
+                    ast::Term::Var(ast::Variable::Var("H".to_string())),
+                    ast::Term::Var(ast::Variable::Var("T".to_string())),
+                ],
             ),
             (
-                "[1, 2]",
-                ast::ConsList::List(
-                    Box::new(ast::Term::Num(1)),
-                    Box::new(ast::ConsList::List(
-                        Box::new(ast::Term::Num(2)),
-                        Box::new(ast::ConsList::Empty),
-                    )),
-                ),
+                "[1, 2, [A, B]]",
+                vec![
+                    ast::Term::Num(1),
+                    ast::Term::Num(2),
+                    ast::Term::List(vec![
+                        ast::Term::Var(ast::Variable::Var("A".to_string())),
+                        ast::Term::Var(ast::Variable::Var("B".to_string())),
+                    ]),
+                ],
             ),
-            (
-                "[1]",
-                ast::ConsList::List(Box::new(ast::Term::Num(1)), Box::new(ast::ConsList::Empty)),
-            ),
-            ("[]", ast::ConsList::Empty),
         ];
 
         for (input, expected) in cases {
-            let (_, result) = ast::ConsList::parse(input).unwrap();
-            assert_eq!(result, expected)
+            let (_, result) = ast::Term::parse(input).unwrap();
+            assert_eq!(result, ast::Term::List(expected))
+        }
+    }
+
+    #[test]
+    fn test_list_parsing_fails() {
+        let cases = vec!["[1, ]", "[1, ", "[1, ["];
+
+        for input in cases {
+            let result = ast::Term::parse(input);
+            assert!(result.is_err());
         }
     }
 

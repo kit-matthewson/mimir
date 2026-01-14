@@ -70,8 +70,8 @@ pub enum Term {
     Num(Number),
     /// A variable, starting with an uppercase letter.
     Var(Variable),
-    /// A cons list.
-    List(ConsList),
+    /// A list.
+    List(Vec<Term>),
     /// A compound term with a functor and parameter list.
     Compound(Compound),
 }
@@ -82,7 +82,7 @@ impl std::fmt::Display for Term {
             Term::Atom(atom) => write!(f, "{}", atom),
             Term::Num(n) => write!(f, "{}", n),
             Term::Var(var) => write!(f, "{}", var),
-            Term::List(list) => write!(f, "{}", list),
+            Term::List(list) => write!(f, "{:?}", list),
             Term::Compound(compound) => write!(f, "{}", compound),
         }
     }
@@ -98,38 +98,6 @@ pub struct Atom {
 impl std::fmt::Display for Atom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
-    }
-}
-
-/// A cons list.
-///
-/// Lists are essentially represented as a linked list using the `./2` compound.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ConsList {
-    /// An empty list. Also used as a sentinel to show that there is no next element.
-    Empty,
-    /// A list element with term and following linked list.
-    List(Box<Term>, Box<ConsList>),
-}
-
-impl ConsList {
-    fn format_no_brackets(&self) -> String {
-        match self {
-            ConsList::Empty => String::new(),
-            ConsList::List(term, cons_list) => {
-                if !matches!(**cons_list, ConsList::Empty) {
-                    format!("{}, {}", term, cons_list.format_no_brackets())
-                } else {
-                    format!("{}", term)
-                }
-            }
-        }
-    }
-}
-
-impl std::fmt::Display for ConsList {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}]", self.format_no_brackets())
     }
 }
 
