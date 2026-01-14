@@ -8,6 +8,7 @@
 pub mod engine;
 pub mod error;
 pub mod parser;
+pub mod translator;
 
 pub use error::MimirError;
 
