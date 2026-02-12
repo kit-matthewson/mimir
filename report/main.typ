@@ -53,27 +53,6 @@ The aim of this project is to use Rust to implement a Mini-Prolog interpreter ca
 
 As a stretch goal, the interpreter will be extended to support fuzzy logic...
 
-== Success Criteria <sec:success_criteria>
-#todo(done: true)[User]
-#todo(done: true)[Execution of Prolog queries]
-#todo(done: true)[All fully justified]
-
-The intended user of this project is a programmer interested in logic programming and Prolog, who wants to both use and understand a Prolog engine. This user would be interested in the implementation details of the engine, and would therefore expect it to be well-documented and easy to read. This is in addition to the engine being useful for executing Prolog queries.
-
-The design would be considered to meet the user requirements if it:
-- Is implemented in modern Rust.
-- Has clear documentation, including explanatory comments in the code and generated documentation of the API.
-- Is structured in a way that is easy to understand, with clear separation between the parser, translator, and engine.
-
-The parser will be considered succesful if it:
-- Correctly reads valid Mini-Prolog syntax and converts it into an internal representation. The parser would be useless if it could not handle valid input.
-- Provides meaningful error messages for invalid syntax. Producing helpful feedback to users is important for usability and debugging.
-
-The evaluation engine will be considered succesful if it:
-- Correctly evaluates Prolog queries based on the internal representation.
-- Produces correct results for a set of predefined test cases. A set of test cases will be created to cover various Prolog constructs and scenarios. These will be used to ensure the evaluation engine produces the expected results.
-
-= Background
 == Prolog
 #todo(done: true)[History]
 #todo[Use in AI and NLP]
@@ -196,6 +175,27 @@ The language also has good documentation features, with `rustdoc` able to genera
 #todo[How it would integrate with Prolog]
 #todo[Extra use it would provide]
 
+= Project Specification
+== Success Criteria <sec:success_criteria>
+#todo(done: true)[User]
+#todo(done: true)[Execution of Prolog queries]
+#todo(done: true)[All fully justified]
+
+The intended user of this project is a programmer interested in logic programming and Prolog, who wants to both use and understand a Prolog engine. This user would be interested in the implementation details of the engine, and would therefore expect it to be well-documented and easy to read. This is in addition to the engine being useful for executing Prolog queries.
+
+The design would be considered to meet the user requirements if it:
+- Is implemented in modern Rust.
+- Has clear documentation, including explanatory comments in the code and generated documentation of the API.
+- Is structured in a way that is easy to understand, with clear separation between the parser, translator, and engine.
+
+The parser will be considered succesful if it:
+- Correctly reads valid Mini-Prolog syntax and converts it into an internal representation. The parser would be useless if it could not handle valid input.
+- Provides meaningful error messages for invalid syntax. Producing helpful feedback to users is important for usability and debugging.
+
+The evaluation engine will be considered succesful if it:
+- Correctly evaluates Prolog queries based on the internal representation.
+- Produces correct results for a set of predefined test cases. A set of test cases will be created to cover various Prolog constructs and scenarios. These will be used to ensure the evaluation engine produces the expected results.
+
 = Design
 == High-Level Architecture
 #todo(done: true)[`nom` parser]
@@ -218,8 +218,8 @@ This design is chosen to meet the user requirements identified in @sec:success_c
 
 The engine structure defined by Dewey and Hardekopf is chosen for its simplicity, which is appropriate for this project given the focus on understanding and correctness over performance.
 
-= Implementation
-== Development
+= Development
+== Development Environment
 #todo(done: true)[Git and GitHub for version control and project management]
 #todo(done: true)[Continuous integration with GitHub Actions]
 #todo(done: true)[`cargo` for testing, run on CI]
@@ -289,7 +289,7 @@ Enums are used for data that can take on one of several different forms. For exa
 
 == Handling Fuzzy Logic (Stretch)
 
-= Results
+= Testing
 == Correctness
 #todo[Test cases]
 #todo[Running examples]
@@ -298,9 +298,13 @@ Enums are used for data that can take on one of several different forms. For exa
 #todo[Benchmark against other implementations]
 #todo[NREV: https://www.cs.cmu.edu/afs/cs.cmu.edu/project/ai-repository/ai/lang/prolog/code/bench/0.html]
 
-== Evaluation
+= Description of the Final Product
+
+= Evaluation of the Final Product
 #todo[Comparison with other Prolog implementations]
 #todo[User feedback?]
+
+= Critical Assessment of the Project as a Whole
 
 = Conclusion
 == Reflection
