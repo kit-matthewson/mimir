@@ -94,7 +94,6 @@
   set page(
     paper: paper-size,
     margin: (bottom: 1.75cm, top: 2.25cm, left: 2cm, right: 2cm),
-    numbering: "1/1",
   )
 
   // Cover page.
