@@ -30,6 +30,7 @@
 
 #pagebreak(weak: true)
 
+#todo[Remove abbreviations]
 #todo(done: true)[Gantt chart]
 
 = Introduction
@@ -176,17 +177,18 @@ The language also has good documentation features, with `rustdoc` able to genera
 #todo[Extra use it would provide]
 
 = Project Specification
-== Success Criteria <sec:success_criteria>
-#todo(done: true)[User]
-#todo(done: true)[Execution of Prolog queries]
-#todo(done: true)[All fully justified]
-
+== User Requirements
 The intended user of this project is a programmer interested in logic programming and Prolog, who wants to both use and understand a Prolog engine. This user would be interested in the implementation details of the engine, and would therefore expect it to be well-documented and easy to read. This is in addition to the engine being useful for executing Prolog queries.
 
 The design would be considered to meet the user requirements if it:
 - Is implemented in modern Rust.
 - Has clear documentation, including explanatory comments in the code and generated documentation of the API.
 - Is structured in a way that is easy to understand, with clear separation between the parser, translator, and engine.
+
+== Success Criteria <sec:success_criteria>
+#todo(done: true)[User]
+#todo(done: true)[Execution of Prolog queries]
+#todo(done: true)[All fully justified]
 
 The parser will be considered succesful if it:
 - Correctly reads valid Mini-Prolog syntax and converts it into an internal representation. The parser would be useless if it could not handle valid input.
@@ -251,7 +253,7 @@ Each parsing function will be thoroughly tested with a variety of valid and inva
 
 === Abstract Syntax Tree
 #todo(done: true)[Representation of Prolog constructs]
-#todo[Design choices, difference between `enum`s and `struct`s]
+#todo(done: true)[Design choices, difference between `enum`s and `struct`s]
 
 The Abstract Syntax Tree (AST) represents the structure of the Prolog program in a way that is easier to work with. Rust provides two main ways to represent data structures: enums and structs.
 
@@ -283,9 +285,33 @@ Enums are used for data that can take on one of several different forms. For exa
 ) <tab:ast_overview>
 
 == Engine
+The engine will be implemented based on the design given by Dewey and Hardekopf @dewey_mini. This implementation uses a state consisting of an environment, equivalence relations between values, a goal stack, and a choice stack.
+
+An environment is a mapping from variables to values. Variables can be one of three types: a number, ground term, or placeholder. A ground term is an atom or compound term that does not contain any variables. A placeholder is a variable that has not yet been unified with any value @dewey_mini.
+
+These values are stored in equivalence classes, which are sets of values that have been unified together. Each equivalence class has a _set representative_, which is the value that represents the class. The classes are stored as a mapping between two values, in order to form a chain of equivalences. The set representative of a value can be found by following the chain of equivalences until a value is reached that is not mapped to any other value. For example, if `X` is unified with `Y`, and `Y` is unified with `Z`, then the equivalence classes would be `{X, Y, Z}`, with `Z` as the set representative @dewey_mini.
+
+The goal stack is fundamental to the execution of Prolog queries. To execute a query, the engine attempts to unify the query with the head of the goal stack. If this is not possible, the engine attempts to use the clauses in the program to derive new goals that can be unified with the query. This process continues until a solution is found or all possibilities have been exhausted @dewey_mini @bratko_prolog_1990.
+
+As well as goals, the goal stack also contains _restoration points_, which allow for local variables within clauses. When evaluating a check expression in the body of a clause, a restoration point is pushed onto the goal stack containing the current environment of the engine. A new environment can then be generated for the execution of the check expression. The original environment will be restored only after the check expression has been evaluated because the restoration point is pushed before the check goal, and so it will only be reached after the check goal has been evaluated @dewey_mini.
+
+When a disjunction is encountered, either through a clause with multiple definitions or through the `;` operator, a choice point is pushed onto the choice stack. This allows the engine to backtrack and try alternative paths if the current path fails. These choice points contain the entire state of the engine at the point of the disjunction @dewey_mini.
+
 === The Unification Algorithm <sec:unification>
-#todo[Implementation details]
+#todo(done: true)[Implementation details]
 #todo[Comments on Dewey's version]
+
+Vital to any Prolog engine is the unification algorithm. This is the algorithm that attempts to make two terms identical by finding an equivalence between them @dewey_mini.
+
+To unify two terms $v_1$ and $v_2$, we consider the following cases:
++ If $v_1$ and $v_2$ are identical, then they are already unified.
++ If one of the terms is an unassigned (placeholder) variable, then we can unify them by assigning the variable to the other term.
++ If both terms are compound terms with the same functor and arity, then they can be unified if each of their corresponding arguments can be unified.
+If none of these cases apply, then the terms cannot be unified and unification fails @dewey_mini.
+
+This algorithm is implemented as a method on the equivalence struct. When called with two values, it attempts to unify them and updates the equivalence classes accordingly. If unification fails, it returns an error. Implementing it in this way allows the unification logic to be encapsulated within the equivalence struct, and so the engine is abstracted from the details of unification and the representation of equivalence classes @dewey_mini.
+
+This algorithm, as given by Dewey and Hardekopf, is simple to understand and implement, making it suitable for this project. However, given the importance of unification to the performance of a Prolog engine, there are more efficient algorithms that could be implemented in future work, for example that used by the WAM @ait-kaci_warrens_1991.
 
 == Handling Fuzzy Logic (Stretch)
 
@@ -337,108 +363,104 @@ Project Gantt Chart. Columns are weeks.
       group(..range(3).map(n => str(n + 1))),
     )
 
-    taskgroup(
-      title: [*Report*],
-      {
-        task(
-          "Research",
-          (from: 0, to: 12),
-        )
-
-        task(
-          "Report Writing",
-          (from: 7, to: 19),
-        )
-
-        task(
-          "Testing and Evaluation",
-          (from: 11, to: 18),
-        )
-
-        task(
-          "Poster Creation",
-          (from: 12, to: 14.7),
-        )
-      },
+    task(
+      [Research],
+      (from: 0, to: 12),
     )
 
-    taskgroup(
-      title: [*Project*],
-      {
-        task(
-          "CI Setup",
-          (from: 0, to: 1),
-        )
-
-        task(
-          "AST Definitions",
-          (from: 0, to: 1.5),
-        )
-        task(
-          "Parsing Functions",
-          (from: 0.5, to: 3),
-        )
-        task(
-          "Parser Integration Tests",
-          (from: 2.5, to: 3.5),
-        )
-
-        task(
-          "Engine Outline",
-          (from: 3, to: 4),
-        )
-
-        task(
-          "Internal Representation",
-          (from: 3.5, to: 5),
-        )
-
-        task(
-          "Engine Structure",
-          (from: 4.5, to: 5.5),
-        )
-
-        task(
-          "Unification Algorithm",
-          (from: 5.5, to: 6),
-        )
-
-        task(
-          "Engine Integration Tests",
-          (from: 6, to: 7),
-        )
-
-        task(
-          "Translator",
-          (from: 7, to: 9),
-        )
-
-        task(
-          "Translator Integration Tests",
-          (from: 8.5, to: 9.5),
-        )
-      },
+    task(
+      [Report Writing],
+      (from: 7, to: 19),
     )
 
-    taskgroup(
-      title: [*Stretch*],
-      {
-        task(
-          "Fuzzy Logic Research",
-          (from: 5, to: 8),
-        )
-
-        task(
-          "Fuzzy Logic Design",
-          (from: 12, to: 13),
-        )
-
-        task(
-          "Fuzzy Logic Implementation",
-          (from: 13, to: 15),
-        )
-      },
+    task(
+      [Testing and Evaluation],
+      (from: 11, to: 18),
     )
+
+    task(
+      [Poster Creation],
+      (from: 12, to: 14.7),
+    )
+
+    task(
+      [Prepare Demos],
+      (from: 13, to: 19),
+    )
+
+    task(
+      [CI Setup],
+      (from: 0, to: 1),
+    )
+
+    task(
+      [AST Definitions],
+      (from: 0, to: 1.5),
+    )
+    task(
+      [Parsing Functions],
+      (from: 0.5, to: 3),
+    )
+    task(
+      [Parser Integration Tests],
+      (from: 2.5, to: 3.5),
+    )
+
+    task(
+      [Engine Outline],
+      (from: 3, to: 4),
+    )
+
+    task(
+      [Internal Representation],
+      (from: 3.5, to: 5),
+    )
+
+    task(
+      [Engine Structure],
+      (from: 4.5, to: 5.5),
+    )
+
+    task(
+      [Unification Algorithm],
+      (from: 5.5, to: 6),
+    )
+
+    task(
+      [Engine Integration Tests],
+      (from: 6, to: 7),
+    )
+
+    task(
+      [Translator],
+      (from: 8, to: 10),
+    )
+
+    task(
+      [Translator Integration Tests],
+      (from: 9.5, to: 10.5),
+    )
+
+    task(
+      [Integration Testing],
+      (from: 10.5, to: 12.5),
+    )
+
+    task(
+      [Fuzzy Logic Research],
+      (from: 5, to: 8),
+    )
+
+    task(
+      [Fuzzy Logic Design],
+      (from: 12, to: 13.5),
+    )
+
+    task(
+      [Fuzzy Logic Implementation],
+      (from: 13, to: 15),
+    )
+
     milestone(
       at: 14.7, // T2 W11
       style: (stroke: (dash: "dashed")),
