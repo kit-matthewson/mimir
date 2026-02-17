@@ -4,7 +4,7 @@
 #codly(display-icon: false, display-name: false)
 
 #let todos = true
-#let hide-done-todos = false
+#let hide-done-todos = true
 
 #set text(lang: "en")
 
@@ -30,19 +30,25 @@
 
 #pagebreak(weak: true)
 
-#todo[Remove abbreviations]
+#todo(done: true)[Remove abbreviations]
 #todo(done: true)[Gantt chart]
 
 = Introduction
 == Motivation
 #todo(done: true)[Use of Prolog in AI]
-#todo[Personal interest in logic programming]
-#todo[Rust as a modern systems language]
+#todo(done: true)[Personal interest in logic programming]
+#todo(done: true)[Rust as a modern systems language]
 #todo[Examine the target user]
 
 The rise in LLMs has led to the acceptance of results from models consisting of billions to trillions of parameters. To attempt to interogate one of these models as to why it has produced a given output is practically impossible. It is not unlikely that such models will, or already are, being used in applications where safety and correctness are paramount @bommasani_opportunities_2022. In such situations, it is desireable to instead use systems which can provide formal guarantees and explanations for their outputs. These systems are referred to as explainable AI, or XAI @dwivedi_explainable_2023.
 
 Prolog can be used to create an XAI system, normally in the form of an expert system (ES). An ES consists of a knowledge base and an inference engine which applies logical reasoning to the knowledge base to derive new facts or make decisions @griffin_fuzzy_2024. Enhancing Prolog with fuzzy logic capabilities might allow it to handle the uncertainty and imprecision inherent in many real-world applications @kosko_fuzzy_1993.
+
+As well as the practical applications of Prolog, I have a personal interest in logic programming. I enjoy the different way of thinking that logic programming requires compared to traditional imperative or even functional programming.
+
+Rust is a modern systems programming language that provides memory safety and high performance. It has been adopted in various domains, including systems programming @bugden_rust_2022. Its safety guarantees, performance, and modern features make it well-suited for this project.
+
+There are multiple target use cases for this project. The first is as a learning tool for myself and others interested in logic programming and Prolog. By implementing a Prolog engine from scratch, I can gain a deeper understanding of how Prolog works and the underlying algorithms involved. The second use case is as a tool for executing Prolog queries. This could be done by writing Prolog programs and executing them with the engine, or by using the engine as a library in other Rust programs. The design and implementation of the project will be guided by these use cases.
 
 == Aims and Objectives
 #todo(done: true)[Mini-Prolog interpreter in Rust]
@@ -67,10 +73,10 @@ Since then, Prolog has found applications in various domains, including mathemat
 
 Unlike most imperative programming languages, Prolog is a _declarative_ language, where a program describes _what_ should be accomplished, rather than _how_.
 
-A Prolog program consists of a database of _clauses_, which can be facts or rules. Facts are unconditional statements about the world, while rules define relationships between facts using logical implications. For example, consider @lst:prolog[listing].
+A Prolog program consists of a database of _clauses_, which can be facts or rules. Facts are unconditional statements about the world, while rules define relationships between facts using logical implications. For example, consider @lst:prolog.
 
 #figure(
-  placement: auto,
+  // placement: auto,
   listing(header: [*Family Tree*], width: 75%)[
     ```pl
     parent(alice, bob).
@@ -177,26 +183,40 @@ The language also has good documentation features, with `rustdoc` able to genera
 #todo[Extra use it would provide]
 
 = Project Specification
-== User Requirements
-The intended user of this project is a programmer interested in logic programming and Prolog, who wants to both use and understand a Prolog engine. This user would be interested in the implementation details of the engine, and would therefore expect it to be well-documented and easy to read. This is in addition to the engine being useful for executing Prolog queries.
+== User Requirements <sec:user_requirements>
+// The intended user of this project is a programmer interested in logic programming and Prolog, who wants to both use and understand a Prolog engine. This user would be interested in the implementation details of the engine, and would therefore expect it to be well-documented and easy to read. This is in addition to the engine being useful for executing Prolog queries.
 
-The design would be considered to meet the user requirements if it:
-- Is implemented in modern Rust.
-- Has clear documentation, including explanatory comments in the code and generated documentation of the API.
-- Is structured in a way that is easy to understand, with clear separation between the parser, translator, and engine.
+There are two primary target personas for this project:
++ Someone interested in Prolog and logic programming, who also wants to understand how a Prolog engine works.
++ Someone who wants to execute Prolog queries, either by writing Prolog programs and executing them with the engine, or by using the engine as a library in other Rust programs.
+
+The design would be considered to meet these user's requirements if it:
+- Is implemented in modern Rust, using idiomatic Rust features and best practices to ensure the code is clear and maintainable. Any `unsafe` code would be clearly marked and justified.
+- Has clear documentation, including explanatory comments in the code and generated documentation of the API. Both personas would benefit from clear documentation, the first to understand the implementation, and the second as they may wish to verify or extend the engine's functionality.
+- Is structured in a way that is easy to understand, with clear separation between the parser, translator, and engine. As with clear documentation, this would benefit both personas.
 
 == Success Criteria <sec:success_criteria>
 #todo(done: true)[User]
 #todo(done: true)[Execution of Prolog queries]
 #todo(done: true)[All fully justified]
+This project's success criteria are based on the user's requirements identified in @sec:user_requirements.
 
-The parser will be considered succesful if it:
-- Correctly reads valid Mini-Prolog syntax and converts it into an internal representation. The parser would be useless if it could not handle valid input.
-- Provides meaningful error messages for invalid syntax. Producing helpful feedback to users is important for usability and debugging.
-
-The evaluation engine will be considered succesful if it:
-- Correctly evaluates Prolog queries based on the internal representation.
-- Produces correct results for a set of predefined test cases. A set of test cases will be created to cover various Prolog constructs and scenarios. These will be used to ensure the evaluation engine produces the expected results.
+There are the following functional requirements:
++ The parser should be implemented correctly:
+  + It should be able to read valid Mini-Prolog syntax and convert it into an internal representation.
+  + It should provide meaningful error messages for invalid syntax.
++ The execution model should be implemented correctly:
+  + User-facing syntax should be correctly translated to the internal syntax.
+  + Unification should be implemented following the design given by Dewey and Hardekopf @dewey_mini.
+  + The execution of Prolog queries should follow the design given by Dewey and Hardekopf @dewey_mini, with correct handling of the goal stack, environment, and choice stack.
+  + A predefined set of test cases should be correctly evaluated by the engine, producing the expected results.
++ It should be possible to execute Prolog queries using the engine:
+  + By loading Prolog programs and executing queries against them.
+  + By using the engine as a library in other Rust programs.
+There are also non-functional requirements related to the user experience and code quality:
++ The code should be well-documented, with clear explanations of the implementation and usage.
++ The code should be clear and maintainable, following Rust best practices and idiomatic usage. Any `unsafe` code should be clearly marked and justified.
++ The performance of the engine should be reasonable for a simple Prolog implementation, although it is not expected to be competitive with highly optimized Prolog engines.
 
 = Design
 == High-Level Architecture
@@ -204,11 +224,11 @@ The evaluation engine will be considered succesful if it:
 #todo(done: true)[AST representation]
 #todo(done: true)[Engine structure as defined by Dewey @dewey_mini]
 
-The design consists of three parts: a parser to generate an AST from user-facing syntax, a translator to convert the user-facing AST to an internal syntax AST, and an engine to execute the program using the internal syntax AST. Each of these parts will be implemented as separate Rust modules, with clear interfaces between them.
+The design consists of three parts: a parser to generate an abstract syntax tree (AST) from user-facing syntax, a translator to convert the user-facing syntax to the internal syntax, and an engine to execute the program using the syntax tree of the internal syntax. Each of these parts will be implemented as separate Rust modules, with clear interfaces between them.
 
-The parser will be written using _nom_, a popular parser combinator library in Rust @nom_github. This will be used to generate an AST representing the user-facing syntax. Ivan Bratko's _Prolog_ @bratko_prolog_1990 will be used as reference for Prolog's syntax.
+The parser will be written using _nom_, a popular parser combinator library in Rust @nom_github. This will be used to generate an abstract syntax tree representing the user-facing syntax. Ivan Bratko's _Prolog_ @bratko_prolog_1990 will be used as reference for Prolog's syntax.
 
-The user-facing AST will then be translated into an AST representing Dewey and Hardekopf's internal syntax @dewey_mini. This allows the engine to be simplified.
+The user-facing syntax tree will then be translated into a syntax tree representing Dewey and Hardekopf's internal syntax @dewey_mini. Using this internal syntax simplifies the implementation of the engine. It does this by removing unnecessary 'syntactic sugar' from the user-facing syntax, such as lists and pattern-matching, and translating them into simpler constructs.
 
 The engine will be structured as defined by Dewey and Hardekopf @dewey_mini, which has a focus on simplicity over performance. It uses a goal stack to keep track of the current goals being evaluated, and an environment to keep track of variable bindings. The engine will implement the unification algorithm to evaluate queries.
 
@@ -241,7 +261,7 @@ Documentation will be generated using `rustdoc`, which can create HTML documenta
 
 Using the _nom_ library, the parser will be implemented as a series of combinators that match the grammar of Mini-Prolog. The grammar will be based on the standard Prolog syntax as given in Bratko's _Prolog_ @bratko_prolog_1990, with adjustments to fit the Mini-Prolog subset defined by Dewey and Hardekopf @dewey_mini.
 
-Parsing functions will be implemented as Rust traits on the AST types. This ties the parsing logic closely to the data structures representing the syntax. A `Parseable` trait will be defined, which requires a `parse` function that takes an input string and returns a result containing the parsed AST node or an error. This allows for a consistent interface for parsing different types of AST nodes:
+Parsing functions will be implemented as Rust traits on the abstract syntax tree types. This ties the parsing logic closely to the data structures representing the syntax. A `Parseable` trait will be defined, which requires a `parse` function that takes an input string and returns a result containing the parsed abstract syntax tree node or an error. This allows for a consistent interface for parsing different types of abstract syntax tree nodes:
 ```rs
 pub trait Parseable: std::fmt::Display + Sized {
     fn parse(input: &str) -> nom::IResult<&str, Self>;
@@ -257,7 +277,7 @@ Each parsing function will be thoroughly tested with a variety of valid and inva
 
 The Abstract Syntax Tree (AST) represents the structure of the Prolog program in a way that is easier to work with. Rust provides two main ways to represent data structures: enums and structs.
 
-Enums are used for data that can take on one of several different forms. For example, a Prolog term can be an atom, a variable, or a compound term. Structs are used for data that has a fixed structure. For example, a clause always consists of a head and a body. Rust makes handling these different types of data straightforward, and the choice between enums and structs is guided by the nature of the data being represented. See @tab:ast_overview for an overview of the main AST node types used in the implementation.
+Enums are used for data that can take on one of several different forms. For example, a Prolog term can be an atom, a variable, or a compound term. Structs are used for data that has a fixed structure. For example, a clause always consists of a head and a body. Rust makes handling these different types of data straightforward, and the choice between enums and structs is guided by the nature of the data being represented. See @tab:ast_overview for an overview of the main abstract syntax tree node types used in the implementation.
 
 #figure(
   placement: auto,
@@ -342,139 +362,146 @@ This algorithm, as given by Dewey and Hardekopf, is simple to understand and imp
 The _cut_ operator allows the programmer to instruct the Prolog engine not to attempt further backtracking. This can be used to make programs more efficient, for instance if two clauses are mutually exclusive then we can cut if the first succeeds because we now know the second will fail.
 
 #appendix[Project Gantt Chart] <appendix:gantt>
-Project Gantt Chart. Columns are weeks.
+A Gantt chart for this project is given in @fig:gantt.
 
-#timeliney.timeline(
-  show-grid: true,
-  {
-    import timeliney: *
+#figure(
+  placement: auto,
+  caption: [Project Gantt chart. Columns are weeks.],
+)[
+  #timeliney.timeline(
+    show-grid: true,
+    {
+      import timeliney: *
 
-    headerline(
-      group(([*Christmas*], 4)),
-      group(([*T2*], 11)),
-      group(([*Easter*], 4)),
-      group(([*T3*], 3)),
-    )
+      headerline(
+        group(([*Christmas*], 4)),
+        group(([*T2*], 11)),
+        group(([*Easter*], 4)),
+        group(([*T3*], 3)),
+      )
 
-    headerline(
-      group(..range(4).map(n => str(n + 1))),
-      group(..range(11).map(n => str(n + 1))),
-      group(..range(4).map(n => str(n + 1))),
-      group(..range(3).map(n => str(n + 1))),
-    )
+      headerline(
+        group(..range(4).map(n => str(n + 1))),
+        group(..range(11).map(n => str(n + 1))),
+        group(..range(4).map(n => str(n + 1))),
+        group(..range(3).map(n => str(n + 1))),
+      )
 
-    task(
-      [Research],
-      (from: 0, to: 12),
-    )
+      task(
+        [Research],
+        (from: 0, to: 12),
+      )
 
-    task(
-      [Report Writing],
-      (from: 7, to: 19),
-    )
+      task(
+        [Report Writing],
+        (from: 7, to: 19),
+      )
 
-    task(
-      [Testing and Evaluation],
-      (from: 11, to: 18),
-    )
+      task(
+        [Testing and Evaluation],
+        (from: 11, to: 18),
+      )
 
-    task(
-      [Poster Creation],
-      (from: 12, to: 14.7),
-    )
+      task(
+        [Poster Creation],
+        (from: 12, to: 14.7),
+      )
 
-    task(
-      [Prepare Demos],
-      (from: 13, to: 19),
-    )
+      task(
+        [Prepare Demos],
+        (from: 13, to: 19),
+      )
 
-    task(
-      [CI Setup],
-      (from: 0, to: 1),
-    )
+      task(
+        [Continuous Integration Setup],
+        (from: 0, to: 1),
+      )
 
-    task(
-      [AST Definitions],
-      (from: 0, to: 1.5),
-    )
-    task(
-      [Parsing Functions],
-      (from: 0.5, to: 3),
-    )
-    task(
-      [Parser Integration Tests],
-      (from: 2.5, to: 3.5),
-    )
+      task(
+        [Abstract Syntax Tree Definitions],
+        (from: 0, to: 1.5),
+      )
 
-    task(
-      [Engine Outline],
-      (from: 3, to: 4),
-    )
+      task(
+        [Parsing Functions],
+        (from: 0.5, to: 3),
+      )
 
-    task(
-      [Internal Representation],
-      (from: 3.5, to: 5),
-    )
+      task(
+        [Parser Integration Tests],
+        (from: 2.5, to: 3.5),
+      )
 
-    task(
-      [Engine Structure],
-      (from: 4.5, to: 5.5),
-    )
+      task(
+        [Engine Outline],
+        (from: 3, to: 4),
+      )
 
-    task(
-      [Unification Algorithm],
-      (from: 5.5, to: 6),
-    )
+      task(
+        [Internal Representation],
+        (from: 3.5, to: 5),
+      )
 
-    task(
-      [Engine Integration Tests],
-      (from: 6, to: 7),
-    )
+      task(
+        [Engine Structure],
+        (from: 4.5, to: 5.5),
+      )
 
-    task(
-      [Translator],
-      (from: 8, to: 10),
-    )
+      task(
+        [Unification Algorithm],
+        (from: 5.5, to: 6),
+      )
 
-    task(
-      [Translator Integration Tests],
-      (from: 9.5, to: 10.5),
-    )
+      task(
+        [Engine Integration Tests],
+        (from: 6, to: 7),
+      )
 
-    task(
-      [Integration Testing],
-      (from: 10.5, to: 12.5),
-    )
+      task(
+        [Translator],
+        (from: 8, to: 10),
+      )
 
-    task(
-      [Fuzzy Logic Research],
-      (from: 5, to: 8),
-    )
+      task(
+        [Translator Integration Tests],
+        (from: 9.5, to: 10.5),
+      )
 
-    task(
-      [Fuzzy Logic Design],
-      (from: 12, to: 13.5),
-    )
+      task(
+        [Integration Testing],
+        (from: 10.5, to: 12.5),
+      )
 
-    task(
-      [Fuzzy Logic Implementation],
-      (from: 13, to: 15),
-    )
+      task(
+        [Fuzzy Logic Research],
+        (from: 5, to: 8),
+      )
 
-    milestone(
-      at: 14.7, // T2 W11
-      style: (stroke: (dash: "dashed")),
-      align(center, [
-        *Poster \ Submission*
-      ]),
-    )
+      task(
+        [Fuzzy Logic Design],
+        (from: 12, to: 13.5),
+      )
 
-    milestone(
-      at: 19.7, // T3 W1
-      style: (stroke: (dash: "dashed")),
-      align(center, [
-        *Project \ Submission*
-      ]),
-    )
-  },
-)
+      task(
+        [Fuzzy Logic Implementation],
+        (from: 13, to: 15),
+      )
+
+      milestone(
+        at: 14.7, // T2 W11
+        style: (stroke: (dash: "dashed")),
+        align(center, [
+          *Poster \ Submission*
+        ]),
+      )
+
+      milestone(
+        at: 19.7, // T3 W1
+        style: (stroke: (dash: "dashed")),
+        align(center, [
+          *Project \ Submission*
+        ]),
+      )
+    },
+  )
+] <fig:gantt>
