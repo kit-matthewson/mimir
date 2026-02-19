@@ -22,6 +22,8 @@
   title: [Your Title],
   // Author's name.
   author: "Author",
+  // Student ID.
+  student-id: none,
   // The paper size to use.
   paper-size: "a4",
   // Date that will be displayed on cover page.
@@ -32,7 +34,7 @@
   // Format in which the date will be displayed on cover page.
   // More info: https://typst.app/docs/reference/foundations/datetime/#format
   // The default format will display date as: MMMM DD, YYYY
-  date-format: "[month repr:long] [day padding:none], [year repr:full]",
+  date-format: "[month repr:long] [year repr:full]",
   // An abstract for your work. Can be omitted if you don't have one.
   abstract: none,
   // The contents for the preface page. This will be displayed after the cover page. Can
@@ -99,19 +101,21 @@
   // Cover page.
   page(
     align(
-      left + horizon,
-      block(width: 90%)[
-        #let v-space = v(2em, weak: true)
-        #text(3em, par(justify: false)[*#title*])
+      center + horizon,
+      block(width: 100%, height: 90%)[
+        #let v-space = v(3em, weak: true)
+
+        #text(2em, par(justify: false)[*#title*])
 
         #v-space
-        #text(1.6em, author)
+
+        #text(1.2em, author)
+        #text(1em, par(justify: false)[Student ID: #student-id])
 
         #if abstract != none {
           v-space
-          block(width: 80%)[
+          block(width: 90%)[
             #abstract
-            // #par(justify: true, abstract)
           ]
         }
 
@@ -119,6 +123,17 @@
           v-space
           text(date.display(date-format))
         }
+
+        #align(
+          bottom,
+          [
+            _I certify that all material in this dissertation that is not my own work has been identified._
+
+            #v(.7em)
+
+            Signature: #box(stroke: (bottom: .4pt), width: 5cm, height: 0cm)
+          ],
+        )
       ],
     ),
   )
