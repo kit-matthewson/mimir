@@ -11,8 +11,14 @@
 #show: template.with(
   title: [A Rust Implementation of Mini-Prolog],
   author: "Kit Matthewson",
+  student-id: "730002704",
   date: datetime.today(),
-  abstract: [],
+  abstract: [
+    This dissertation explores the design and implementation of a Mini-Prolog interpreter in Rust. The project is motivated by the rise of large language models (LLMs) and the need for explainable AI (XAI) systems that can provide formal guarantees and explanations for their outputs. Based on Dewey and Hardekopf's specification for Mini-Prolog, the interpreter implements a core subset of Prolog, omitting features like cut and meta-programming to simplify implementation.
+
+    Rust was chosen for its modern features, performance, and safety guarantees. The architecture comprises a parser, a translator to an internal syntax, and an execution engine. The parser is implemented using the _nom_ combinator library, while the engine follows a stack-based execution model.
+  ],
+  table-of-contents: outline(),
   bibliography: bibliography("refs.bib"),
 )
 
@@ -26,8 +32,6 @@
   if done [#sym.ballot.check.heavy #body] else [#sym.ballot #body],
 ) ]
 
-#outline()
-
 #pagebreak(weak: true)
 
 #todo(done: true)[Remove abbreviations]
@@ -38,7 +42,7 @@
 #todo(done: true)[Use of Prolog in AI]
 #todo(done: true)[Personal interest in logic programming]
 #todo(done: true)[Rust as a modern systems language]
-#todo[Examine the target user]
+#todo(done: true)[Examine the target user]
 
 The rise in LLMs has led to the acceptance of results from models consisting of billions to trillions of parameters. To attempt to interogate one of these models as to why it has produced a given output is practically impossible. It is not unlikely that such models will, or already are, being used in applications where safety and correctness are paramount @bommasani_opportunities_2022. In such situations, it is desireable to instead use systems which can provide formal guarantees and explanations for their outputs. These systems are referred to as explainable AI, or XAI @dwivedi_explainable_2023.
 
@@ -62,7 +66,6 @@ As a stretch goal, the interpreter will be extended to support fuzzy logic...
 
 == Prolog
 #todo(done: true)[History]
-#todo[Use in AI and NLP]
 #todo(done: true)[Syntax and semantics]
 #todo(done: true)[Unification algorithm]
 #todo(done: true)[Mini-Prolog subset]
@@ -157,7 +160,6 @@ See @lst:syntax_comparison for an example of translated clauses.
 #todo(done: true)[History and uses]
 #todo(done: true)[Key features]
 #todo(done: true)[Compare to C/C++]
-#todo[Why Rust for this project?]
 #todo(done: true)[Performance]
 #todo(done: true)[Safety]
 #todo(done: true)[Modern tooling]
@@ -319,7 +321,7 @@ When a disjunction is encountered, either through a clause with multiple definit
 
 === The Unification Algorithm <sec:unification>
 #todo(done: true)[Implementation details]
-#todo[Comments on Dewey's version]
+#todo(done: true)[Comments on Dewey's version]
 
 Vital to any Prolog engine is the unification algorithm. This is the algorithm that attempts to make two terms identical by finding an equivalence between them @dewey_mini.
 
@@ -339,6 +341,13 @@ This algorithm, as given by Dewey and Hardekopf, is simple to understand and imp
 == Correctness
 #todo[Test cases]
 #todo[Running examples]
+The correctness of the implementation will be verified through a comprehensive suite of test cases. These will form a test pyramid, with a large number of unit tests for individual components, a smaller number of integration tests for the interaction between components, and a few end-to-end tests that execute complete Prolog programs.
+
+Rust has excellent support for testing, with a built-in testing framework that allows for easy writing and running of tests. Unit tests will be written for the parser, translator, and engine components, while integration tests will verify the correct interaction between these components. End-to-end tests will execute complete Prolog programs and verify that the results are as expected.
+
+These tests will be run automatically on each commit through continuous integration, ensuring that any regressions are quickly identified and addressed.
+
+In addition to these standard tests, Rust also supports documentation tests, where code examples in documentation comments are automatically tested. This acts as both extra unit tests and ensures that the documentation remains correct.
 
 == Performance
 #todo[Benchmark against other implementations]
@@ -354,7 +363,10 @@ This algorithm, as given by Dewey and Hardekopf, is simple to understand and imp
 
 = Conclusion
 == Reflection
+
 == Future Work
+#todo[Implementing the WAM for performance and full Prolog support]
+
 == Summary
 
 = Appendix
