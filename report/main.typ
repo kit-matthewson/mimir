@@ -94,36 +94,38 @@ A Prolog program consists of a database of _clauses_, which can be facts or rule
   caption: [A simple Prolog program defining family relationships.],
 ) <lst:prolog>
 
-Here we:
-- Define two facts: Alice is Bob's parent, and Bob is Charlie's parent.
-- Define a rule stating that _X_ is a child of _Y_ if (and only if) _Y_ is a parent of _X_.
-- Define a recursive rule stating the base case, that _X_ is an ancestor of _Y_ if _X_ is a parent of _Y_; and the recursive case, that _X_ is an ancestor of _Y_ if _X_ is a parent of some _Z_, and _Z_ is an ancestor of _Y_.
-Because Prolog attempts clauses in the order they are defined, the base case will always be checked first.
+This program can be read as a set of logical statements about the world. The facts state that Alice is Bob's parent and Bob is Charlie's parent. Then a rule is defined that states that if _Y_ is a parent of _X_, then _X_ is a child of _Y_. Defining an ancestor is more complex, as it is a recursive relationship. The base case states that if _X_ is a parent of _Y_, then _X_ is an ancestor of _Y_. The recursive case states that if _X_ is a parent of some _Z_, and _Z_ is an ancestor of _Y_, then _X_ is also an ancestor of _Y_.
 
 This program can be queried to find relationships. For example, the query `ancestor(alice, charlie).` would return true, as Alice is an ancestor of Charlie through Bob. We can also ask Prolog to find all ancestors of Charlie with the query `ancestor(X, charlie).`, which would yield `X = bob; X = alice;` @clocksin_programming_2003.
 
-Prolog uses a process called _unification_ to answer queries. Unification is an algorithm that attempts to make two terms identical by finding a substitution for variables. Two terms can be unified if @clocksin_programming_2003:
-- They are identical atoms or numbers.
-- One is a variable, which can be unified with any term.
-- Both are compound terms with the same functor and arity, and their corresponding arguments can be unified recursively.
+Prolog uses a process called _unification_ to answer queries. Unification is an algorithm that attempts to make two terms identical by finding a substitution for variables.
+
+There are three ways that terms can be unified. If they are identical atoms or numbers, then they are already unified. If only one is a variable, then they can be unified by assigning the variable to the other term. If both are compound terms with the same functor and arity, then they can be unified if each of their corresponding arguments can themselves be unified. If none of these cases apply, then the terms cannot be unified and unification fails @clocksin_programming_2003.
+
 The 'execution' of a Prolog query works by attempting to unify the query with a stack of goals created from the program's clauses. This process is discussed further in @sec:unification[section].
 
 === Mini-Prolog
 For this project, a subset of Prolog will be used that we will call _Mini-Prolog_ based on the design given by Dewey and Hardekopf @dewey_mini. Mini-Prolog simplifies the implementation of a Prolog engine in two ways: by removing features from Prolog, and introducing an internal syntax.
 
-The features removed are:
-+ The backtracking control operators _cut_, `!`, and _not_.
-+ Clause management predicates, such as `assert/1` and `retract/1`.
-+ Meta-programming operators, such as `forall/2`, `bagof/3`, and `findall/3`.
-+ Built-in predicates, such as `append/3` and `member/2`. These can still be implemented by the user.
-Most Prolog programs do not rely on these features, and those that do not can be executed by a Mini-Prolog engine.
+The removed features are cut, clause management predicates, meta-programming operators, and built-in predicates.
 
-The user-facing syntax can be translated into a simpler internal syntax for execution. The internal syntax:
-+ Replaces lists and list operations with `./1` structures. For example the user-facing syntax `[1, 2, 3]` becomes `.(1, .(2, .(3, nil)))`.
-+ Hoists the declaration of all variables to a list of local variables at the head the clause.
-+ Translates pattern-matching to unification.
-+ Translates unification between arbritrary values to a series of variable bindings and unifications on variables. This simplifies unification by only allowing it between variables.
-See @lst:syntax_comparison for an example of translated clauses.
+The _cut_ operator allows the programmer to control backtracking by instructing the Prolog engine not to attempt any further alternatives. This removes _negation as faliure_ by extension, as it is implemented using cut. There are only a few cases where cut is necessary for the execution of a program, it is most often used to improve the efficiency of a program.
+
+Clause management predicates allow the programmer to modify the program at runtime by adding or retracting clauses. This is a powerful feature used in some programs but is not necessary for the execution of most Prolog programs. Note also that if the implementation is being used as a library, the user could implement this functionality themselves.
+
+Full Prolog implementations often include built-in _meta-programming_ operators, which allow the programmer to reason about the program itself. For example, `bagof/3` allows the programmer to generate a list of all solutions to a query. As with clause management predicates, this feature could be implemented externally by users of the engine as a libary and is not used in most programs.
+
+As well as these features, other implementations may also include built-in predicates, equivalent to the standard library in other languages. These can be implemented by the user as required.
+
+Dewey and Hardekopf's internal syntax can be produced from the user-facing syntax by a translation step implemented in the engine. An example of this translation is given in @lst:syntax_comparison.
+
+The internal syntax replaces lists with `./1` structures. For example, the user-facing syntax `[1, 2, 3]` becomes `.(1, .(2, .(3, nil)))`. This means that the engine does not need to implement any special handling for lists, as they are just a specific case of compound terms.
+
+Pattern matching can always be replaced with some number of unification operations. Matching for an empty list, for example, can be replaced with a unification with `nil`.
+
+The head of a clause is changed so that it only contains variables. This can be achieved by inserting a number of unification steps at the beginning of the body of the clause to unify new variables in the head with the original terms in the head. In addition to this, a list of local variables is added alongside the head of the clause, which contains all the variables used in the clause. This has no effect on the execution of the program (as all Prolog variables are clause-local anyway), but simplifies the implementation of the engine by making it clear which variables are in scope at any given point.
+
+Unification between arbitrary values can be replaced with variable bindings and unification on these variables. A variable _binding_ ($arrow.l$) differs from unification ($equiv$) in that it creates an equivalence between the variable and the value, but does not attempt to unify them. By using this translation, the engine only needs to implement unification between variables.
 
 #figure(
   placement: auto,
@@ -170,11 +172,8 @@ Anyone who has written C or C++ will be familiar with issues such as buffer over
 
 As well as safety, Rust has modern features such as options and pattern matching, a powerful macro system, and a rich type system with generics and traits. It manages to provide these features whilst still being a compiled language with performance comparable to C and C++ @bugden_rust_2022.
 
-Rust also has excellent tooling, with `cargo` as its built-in package manager and build system. It provides utilities such as:
-- `cargo run` to resolve dependencies, compile, and run the program.
-- `cargo test` to run unit tests.
-- `cargo clippy` to provide linting and code quality suggestions.
-- `cargo fmt` to automatically format code according to style guidelines.
+Rust also has excellent tooling, with `cargo` as its built-in package manager and build system. It provides commands for managing dependencies, building and running the program, running tests, and maintaining code quality with linting and formatting.
+
 These tools help streamline development and maintain code quality @rust-lang. Their simplicity also makes continuous integration (CI) straightforward to set up.
 
 The language also has good documentation features, with `rustdoc` able to generate HTML documentation from documentation comments in the source code. If these comments contain example code, `cargo test` will include them in the test suite to ensure they remain correct @rust-lang.
@@ -186,16 +185,12 @@ The language also has good documentation features, with `rustdoc` able to genera
 
 = Project Specification
 == User Requirements <sec:user_requirements>
-// The intended user of this project is a programmer interested in logic programming and Prolog, who wants to both use and understand a Prolog engine. This user would be interested in the implementation details of the engine, and would therefore expect it to be well-documented and easy to read. This is in addition to the engine being useful for executing Prolog queries.
-
-There are two primary target personas for this project:
-+ Someone interested in Prolog and logic programming, who also wants to understand how a Prolog engine works.
-+ Someone who wants to execute Prolog queries, either by writing Prolog programs and executing them with the engine, or by using the engine as a library in other Rust programs.
+I have identified two main personas for this project. The first is someone interested in logic programming and Prolog, who wants to understand how a Prolog engine works. This user would be interested in the implementation details of the engine, and would therefore expect it to be well-documented and easy to read. The second persona is someone who wants to execute Prolog queries, either by writing Prolog programs and executing them with the engine, or by using the engine as a library in other Rust programs.
 
 The design would be considered to meet these user's requirements if it:
-- Is implemented in modern Rust, using idiomatic Rust features and best practices to ensure the code is clear and maintainable. Any `unsafe` code would be clearly marked and justified.
-- Has clear documentation, including explanatory comments in the code and generated documentation of the API. Both personas would benefit from clear documentation, the first to understand the implementation, and the second as they may wish to verify or extend the engine's functionality.
-- Is structured in a way that is easy to understand, with clear separation between the parser, translator, and engine. As with clear documentation, this would benefit both personas.
++ Is implemented in modern Rust, using idiomatic Rust features and best practices to ensure the code is clear and maintainable. Any `unsafe` code would be clearly marked and justified.
++ Has clear documentation, including explanatory comments in the code and generated documentation of the API. Both personas would benefit from clear documentation, the first to understand the implementation, and the second as they may wish to verify or extend the engine's functionality.
++ Is structured in a way that is easy to understand, with clear separation between the parser, translator, and engine. As with clear documentation, this would benefit both personas.
 
 == Success Criteria <sec:success_criteria>
 #todo(done: true)[User]
@@ -349,6 +344,9 @@ These tests will be run automatically on each commit through continuous integrat
 
 In addition to these standard tests, Rust also supports documentation tests, where code examples in documentation comments are automatically tested. This acts as both extra unit tests and ensures that the documentation remains correct.
 
+== Verification
+To verify that the implementation meets the user requirements and success criteria, a test case will be created
+
 == Performance
 #todo[Benchmark against other implementations]
 #todo[NREV: https://www.cs.cmu.edu/afs/cs.cmu.edu/project/ai-repository/ai/lang/prolog/code/bench/0.html]
@@ -370,9 +368,6 @@ In addition to these standard tests, Rust also supports documentation tests, whe
 == Summary
 
 = Appendix
-#appendix[Prolog features removed from Mini-Prolog]
-The _cut_ operator allows the programmer to instruct the Prolog engine not to attempt further backtracking. This can be used to make programs more efficient, for instance if two clauses are mutually exclusive then we can cut if the first succeeds because we now know the second will fail.
-
 #appendix[Project Gantt Chart] <appendix:gantt>
 A Gantt chart for this project is given in @fig:gantt.
 
