@@ -20,7 +20,7 @@
 
 *Student Name:* Kit Matthewson \
 *Project Name:* An Implementation of Prolog in Rust \
-*Internal Supervisor:* Dr. Soufian Majeed
+*Internal Supervisor:* Dr. Majeed Soufian
 
 #table(
   columns: 4,
@@ -28,12 +28,18 @@
   [26/09/2025], [], [], [],
   [03/10/2025], [], [], [],
   [10/10/2025], [], [], [],
-  [17/10/2025], [], [], [],
-  [24/10/2025], [], [], [],
+  [17/10/2025], [- Discussed literature review.], [- Considered adding Fuzzy Logic as a stretch goal.], [],
+  [24/10/2025],
+  [
+    - Discussed literature review.
+  ],
+  [],
+  [],
+
   [07/11/2025], [], [], [],
   [14/11/2025], [- Discussed final draft of literature review.], [- Happy to submit the final draft for marking.], [],
   [21/11/2025], [], [], [],
-  [28/11/2025], [], [], [],
+  [28/11/2025], [- Discussed Fuzzy Logic.], [- Agreed to add Fuzzy Logic support.], [],
   [05/12/2025], [], [], [],
   [11/12/2025],
   [
@@ -54,5 +60,22 @@
     - Reviewed plan for the final report.
   ],
   [- Agreed to go ahead with the general plan.],
+  [],
+
+  [29/01/2026], [- Discussed progress on the final report.], [], [],
+  [05/02/2026], [- Discussed progress on the final report.], [- Started thinking about demo and project showcase.], [],
+
+  [12/02/2026], [- Discussed progress on the final report.], [- Suggested breaking down project Gantt chart.], [],
+
+  [19/02/2026],
+  [
+    - Discussed progress on the final report.
+    - Discussed progress on implementing translator.
+  ],
+  [
+    - Suggested reducing the use of lists.
+    - Suggested more focus on the V development model.
+    - Agreed progress is good and to continue as is.
+  ],
   [],
 )
