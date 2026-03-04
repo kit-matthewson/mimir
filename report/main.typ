@@ -345,11 +345,17 @@ These tests will be run automatically on each commit through continuous integrat
 In addition to these standard tests, Rust also supports documentation tests, where code examples in documentation comments are automatically tested. This acts as both extra unit tests and ensures that the documentation remains correct.
 
 == Verification
-To verify that the implementation meets the user requirements and success criteria, a test case will be created
+#todo[Identify a good concrete use case]
+To verify that the implementation meets the user requirements and success criteria, a concrete use case will be identified and developed.
+
+This use case will be a Prolog program similar to one the target user might want to write, and will be designed to test the key features of the engine, such as unification and backtracking. The program will be executed using the engine, and the results compared to the expected results to verify correctness.
 
 == Performance
-#todo[Benchmark against other implementations]
-#todo[NREV: https://www.cs.cmu.edu/afs/cs.cmu.edu/project/ai-repository/ai/lang/prolog/code/bench/0.html]
+#todo(done: true)[Benchmark against other implementations]
+
+Although performance is not a primary focus of this project, it must still be reasonable. To verify this, the implementation will be benchmarked against other Prolog implementations. These benchmarks will include both synthetic benchmarks, such as reversing lists and quicksort, and larger, more complex Prolog programs.
+
+If there is time, the implementation of some optimisations could be explored, and these benchmarks used to verify their effectiveness.
 
 = Description of the Final Product
 
