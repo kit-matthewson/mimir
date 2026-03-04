@@ -178,10 +178,24 @@ These tools help streamline development and maintain code quality @rust-lang. Th
 
 The language also has good documentation features, with `rustdoc` able to generate HTML documentation from documentation comments in the source code. If these comments contain example code, `cargo test` will include them in the test suite to ensure they remain correct @rust-lang.
 
-== Fuzzy Logic (Stretch)
-#todo[Overview: @zadeh_fuzzy_1988 @kosko_fuzzy_1993 @zadeh_need_2008]
+== Fuzzy Logic
+#todo(done: true)[Overview]
 #todo[How it would integrate with Prolog]
 #todo[Extra use it would provide]
+
+Fuzzy Logic was introduced in 1965 by Lotfi Zadeh as a way to deal with the uncertainty and imprecision inherent in many real-world applications @zadeh_fuzzy_1965.
+
+In a standard boolean logic system, propositions are either true or false. This can be expanded to a multi-valued logic system, where propositions take on values from a finite set $T$. In fuzzy logic, this is expanded further to allow truth values taken from the continuous interval $[0, 1]$, where 0 is the boolean false, 1 is the boolean true, and values in between represent varying degrees of truth @zadeh_fuzzy_1988.
+
+This allows for predicates to be evaluated with a degree of truth, rather than just true or false. For example the predicates 'tall', 'ill', or 'tired' are best evaluated as fuzzy predicates instead of boolean predicates @zadeh_fuzzy_1988.
+
+Boolean logic allows for only two quantifiers: 'for all' and 'there exists'. In contrast fuzzy logic allows for any number of such quantifers, such as 'most', 'several', or 'about ten' @zadeh_fuzzy_1988.
+
+Integrating fuzzy logic with Prolog would allow for more nuanced reasoning in situations where information is uncertain or imprecise. Instead of predicates being simply true or false, they could be evaluated to a floating-point value representing their degree of truth. To implement this, we need replacements for the boolean operators _conjunction_, _disjunction_, and _negation_. Using minimum for conjuction, maximum for disjunction, and $1 - p$ for negation, we can maintain the properties of these operators while allowing for fuzzy truth values @zadeh_fuzzy_1965. Consider how with $italic("true") = 1$ and $italic("false") = 0$ these operators behave identically to their boolean counterparts.
+
+A fuzzy predicate would have the syntax `predicate(args) {degree}.`, where `degree` is a floating-point value between 0 and 1 representing the degree of truth of the predicate. For example, `tall(alice) {0.8}.` would indicate that Alice is tall to a degree of 0.8.
+
+When evaluating a query, the engine would need to calculate the degree of truth of the query based on the degrees of truth of the predicates involved and the fuzzy logic operators. For example, if we have `tall(alice) {0.8}.` and `tall(bob) {0.6}.`, then the query `tall(X).` would return `X = alice {0.8}; X = bob {0.6};`. For clauses with multiple goals in the body, the degree of truth of the clause would be calculated using the conjunction operator.
 
 = Project Specification
 == User Requirements <sec:user_requirements>
@@ -191,6 +205,8 @@ The design would be considered to meet these user's requirements if it:
 + Is implemented in modern Rust, using idiomatic Rust features and best practices to ensure the code is clear and maintainable. Any `unsafe` code would be clearly marked and justified.
 + Has clear documentation, including explanatory comments in the code and generated documentation of the API. Both personas would benefit from clear documentation, the first to understand the implementation, and the second as they may wish to verify or extend the engine's functionality.
 + Is structured in a way that is easy to understand, with clear separation between the parser, translator, and engine. As with clear documentation, this would benefit both personas.
+
+As well as these general requirements, the implementation will be verified with a use case that is designed to test the key features of the engine, such as unification and backtracking.
 
 == Success Criteria <sec:success_criteria>
 #todo(done: true)[User]
@@ -210,6 +226,7 @@ There are the following functional requirements:
 + It should be possible to execute Prolog queries using the engine:
   + By loading Prolog programs and executing queries against them.
   + By using the engine as a library in other Rust programs.
++ It should be possible to implement the identified validation use case using the engine, and it should produce the expected results.
 There are also non-functional requirements related to the user experience and code quality:
 + The code should be well-documented, with clear explanations of the implementation and usage.
 + The code should be clear and maintainable, following Rust best practices and idiomatic usage. Any `unsafe` code should be clearly marked and justified.
