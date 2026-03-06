@@ -78,4 +78,19 @@
     - Agreed progress is good and to continue as is.
   ],
   [],
+
+  [26/02/2026],
+  [
+    - Discussed progress on the final report.
+  ],
+  [],
+
+  [6/03/2026],
+  [
+    - Discussed progress on the final report.
+    - Discussed poster and presentation.
+  ],
+  [
+    - Agreed that focus should now be on the poster.
+  ],
 )
