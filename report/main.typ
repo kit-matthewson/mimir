@@ -1,15 +1,15 @@
 #import "template.typ": *
 #import "@preview/timeliney:0.4.0"
 
-#codly(display-icon: false, display-name: false)
+// #codly(display-icon: false, display-name: false)
 
-#let todos = true
+#let todos = false
 #let hide-done-todos = true
 
 #set text(lang: "en")
 
 #show: template.with(
-  title: [A Rust Implementation of Mini-Prolog],
+  title: [A Rust Implementation of Mini-Prolog with Fuzzy Logic Support],
   author: "Kit Matthewson",
   student-id: "730002704",
   date: datetime.today(),
@@ -38,17 +38,19 @@
 #todo(done: true)[Gantt chart]
 
 = Introduction
-== Motivation
+== Context
 #todo(done: true)[Use of Prolog in AI]
 #todo(done: true)[Personal interest in logic programming]
 #todo(done: true)[Rust as a modern systems language]
 #todo(done: true)[Examine the target user]
 
-The rise in LLMs has led to the acceptance of results from models consisting of billions to trillions of parameters. To attempt to interogate one of these models as to why it has produced a given output is practically impossible. It is not unlikely that such models will, or already are, being used in applications where safety and correctness are paramount @bommasani_opportunities_2022. In such situations, it is desireable to instead use systems which can provide formal guarantees and explanations for their outputs. These systems are referred to as explainable AI, or XAI @dwivedi_explainable_2023.
+Prolog is a simple but powerful programming language developed at the University of Marseille in the early 1970s. Its ease of use makes it a popular choice for both teaching and using logic programming @bratko_prolog_1990. With roots in formal logic, Prolog is particularly well-suited for applications in theorem proving @stickel_prolog_1992, expert systems @merritt_building_2012, and natural language processing @shieber_prolog_2005.
 
-Prolog can be used to create an XAI system, normally in the form of an expert system (ES). An ES consists of a knowledge base and an inference engine which applies logical reasoning to the knowledge base to derive new facts or make decisions @griffin_fuzzy_2024. Enhancing Prolog with fuzzy logic capabilities might allow it to handle the uncertainty and imprecision inherent in many real-world applications @kosko_fuzzy_1993.
+One of the motivations for this project is the rise of large language models (LLMs) and the need for explainable AI (XAI) systems. LLMs have impressive capabilities but their complexity and lack of transparency make them unsuitable for applications where safety and correctness are paramount @bommasani_opportunities_2022 @wang_decodingtrust_2024. In contrast, Prolog's logical foundations and declarative nature make it a good candidate for building explainable AI systems, particularly in the form of expert systems @dwivedi_explainable_2023.
 
-As well as the practical applications of Prolog, I have a personal interest in logic programming. I enjoy the different way of thinking that logic programming requires compared to traditional imperative or even functional programming.
+Expert Systems consist of a knowledge base and an inference engine which applies logical reasoning to the knowledge base to derive new facts or make decisions @griffin_fuzzy_2024 @clark_prolog_1980. Enhancing Prolog with fuzzy logic capabilities would allow it to handle the uncertainty and imprecision inherent in many real-world applications @kosko_fuzzy_1993.
+
+The creation of a Prolog engine from scratch is also a valuable learning experience. It allows for a deep understanding of the methods underlying Prolog, such as unification and backtracking, which in turn prove useful for writing efficient Prolog.
 
 Rust is a modern systems programming language that provides memory safety and high performance. It has been adopted in various domains, including systems programming @bugden_rust_2022. Its safety guarantees, performance, and modern features make it well-suited for this project.
 
@@ -58,11 +60,11 @@ There are multiple target use cases for this project. The first is as a learning
 #todo(done: true)[Mini-Prolog interpreter in Rust]
 #todo(done: true)[Parse Mini-Prolog syntax]
 #todo(done: true)[Implement evaluation of Prolog queries]
-#todo[Stretch: Fuzzy logic support]
+#todo(done: true)[Stretch: Fuzzy logic support]
 
 The aim of this project is to use Rust to implement a Mini-Prolog interpreter capable of parsing and evaluating Prolog queries. This will involve two parts: creating a parser to read Mini-Prolog syntax and convert it into an internal representation, and implementing an evaluation engine to answer Prolog queries based on this representation.
 
-As a stretch goal, the interpreter will be extended to support fuzzy logic...
+Fuzzy logic support is a stretch goal for this project. If implemented, it would allow the engine to evaluate predicates with a degree of truth rather than boolean true or false. This would expand the capabilities of the engine to include the uncertainty and imprecision common in real-world applications.
 
 == Prolog
 #todo(done: true)[History]
@@ -72,40 +74,34 @@ As a stretch goal, the interpreter will be extended to support fuzzy logic...
 
 Prolog was first developed in the early 1970s by Alain Colmerauer and Philippe Roussel in the artificial intelligence group at Aix-Marseille II University, France. Its original intention was to process natural language in an attempt to create a ‘man-machine communication system in natural language’ @colmerauer_birth_1992.
 
-Since then, Prolog has found applications in various domains, including mathematical logic, relational databases, symbolic equation solving, natural language processing, and artificial intelligence @clocksin_programming_2003.
+Since then, Prolog has found applications in various domains, including theorem proving @stickel_prolog_1992, relational databases, symbolic equation solving, natural language processing, and artificial intelligence @clocksin_programming_2003 @merritt_building_2012.
 
-Unlike most imperative programming languages, Prolog is a _declarative_ language, where a program describes _what_ should be accomplished, rather than _how_.
+As a _declarative_ language, the Prolog programmer describes _what_ should be accomplished rather than _how_. The execution of a Prolog query works by attempting to unify the query with a stack of goals created from the program's clauses @bratko_prolog_1990.
 
-A Prolog program consists of a database of _clauses_, which can be facts or rules. Facts are unconditional statements about the world, while rules define relationships between facts using logical implications. For example, consider @lst:prolog.
+// Unlike most imperative programming languages, Prolog is a _declarative_ language, where a program describes _what_ should be accomplished, rather than _how_.
 
-#figure(
-  // placement: auto,
-  listing(header: [*Family Tree*], width: 75%)[
-    ```pl
-    parent(alice, bob).
-    parent(bob, charlie).
+// A Prolog program consists of a database of _clauses_, which can be facts or rules. Facts are unconditional statements about the world, while rules define relationships between facts using logical implications. For example, consider:
 
-    child(X, Y) :- parent(Y, X).
+// ```pl
+// parent(alice, bob).
+// parent(bob, charlie).
 
-    ancestor(X, Y) :- parent(X, Y).
-    ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).
-    ```
-  ],
-  caption: [A simple Prolog program defining family relationships.],
-) <lst:prolog>
+// child(X, Y) :- parent(Y, X).
 
-This program can be read as a set of logical statements about the world. The facts state that Alice is Bob's parent and Bob is Charlie's parent. Then a rule is defined that states that if _Y_ is a parent of _X_, then _X_ is a child of _Y_. Defining an ancestor is more complex, as it is a recursive relationship. The base case states that if _X_ is a parent of _Y_, then _X_ is an ancestor of _Y_. The recursive case states that if _X_ is a parent of some _Z_, and _Z_ is an ancestor of _Y_, then _X_ is also an ancestor of _Y_.
+// ancestor(X, Y) :- parent(X, Y).
+// ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).
+// ```
 
-This program can be queried to find relationships. For example, the query `ancestor(alice, charlie).` would return true, as Alice is an ancestor of Charlie through Bob. We can also ask Prolog to find all ancestors of Charlie with the query `ancestor(X, charlie).`, which would yield `X = bob; X = alice;` @clocksin_programming_2003.
+// This program can be read as a set of logical statements about the world. The facts state that Alice is Bob's parent and Bob is Charlie's parent. Then a rule is defined that states that if _Y_ is a parent of _X_, then _X_ is a child of _Y_. Defining an ancestor is more complex, as it is a recursive relationship. The base case states that if _X_ is a parent of _Y_, then _X_ is an ancestor of _Y_. The recursive case states that if _X_ is a parent of some _Z_, and _Z_ is an ancestor of _Y_, then _X_ is also an ancestor of _Y_.
 
-Prolog uses a process called _unification_ to answer queries. Unification is an algorithm that attempts to make two terms identical by finding a substitution for variables.
+// This program can be queried to find relationships. For example, the query `ancestor(alice, charlie).` would return true, as Alice is an ancestor of Charlie through Bob. We can also ask Prolog to find all ancestors of Charlie with the query `ancestor(X, charlie).`, which would yield `X = bob; X = alice;` @clocksin_programming_2003.
 
-There are three ways that terms can be unified. If they are identical atoms or numbers, then they are already unified. If only one is a variable, then they can be unified by assigning the variable to the other term. If both are compound terms with the same functor and arity, then they can be unified if each of their corresponding arguments can themselves be unified. If none of these cases apply, then the terms cannot be unified and unification fails @clocksin_programming_2003.
+// Prolog uses a process called _unification_ to answer queries. Unification is an algorithm that attempts to make two terms identical by finding a substitution for variables.
 
-The 'execution' of a Prolog query works by attempting to unify the query with a stack of goals created from the program's clauses. This process is discussed further in @sec:unification[section].
+// There are three ways that terms can be unified. If they are identical atoms or numbers, then they are already unified. If only one is a variable, then they can be unified by assigning the variable to the other term. If both are compound terms with the same functor and arity, then they can be unified if each of their corresponding arguments can themselves be unified. If none of these cases apply, then the terms cannot be unified and unification fails @clocksin_programming_2003.
 
 === Mini-Prolog
-For this project, a subset of Prolog will be used that we will call _Mini-Prolog_ based on the design given by Dewey and Hardekopf @dewey_mini. Mini-Prolog simplifies the implementation of a Prolog engine in two ways: by removing features from Prolog, and introducing an internal syntax.
+For this project, a subset of Prolog will be used that we will call _Mini-Prolog_. This is based on the design given by Dewey and Hardekopf @dewey_mini. Mini-Prolog simplifies the implementation of a Prolog engine in two ways: by removing features from Prolog, and introducing an internal syntax.
 
 The removed features are cut, clause management predicates, meta-programming operators, and built-in predicates.
 
@@ -115,9 +111,9 @@ Clause management predicates allow the programmer to modify the program at runti
 
 Full Prolog implementations often include built-in _meta-programming_ operators, which allow the programmer to reason about the program itself. For example, `bagof/3` allows the programmer to generate a list of all solutions to a query. As with clause management predicates, this feature could be implemented externally by users of the engine as a libary and is not used in most programs.
 
-As well as these features, other implementations may also include built-in predicates, equivalent to the standard library in other languages. These can be implemented by the user as required.
+As well as these features, other implementations may also include built-in predicates, equivalent to the standard library of other languages. These can be implemented by the user as required.
 
-Dewey and Hardekopf's internal syntax can be produced from the user-facing syntax by a translation step implemented in the engine. An example of this translation is given in @lst:syntax_comparison.
+Dewey and Hardekopf's internal syntax can be produced from the user-facing syntax by a translation step implemented in the engine.
 
 The internal syntax replaces lists with `./1` structures. For example, the user-facing syntax `[1, 2, 3]` becomes `.(1, .(2, .(3, nil)))`. This means that the engine does not need to implement any special handling for lists, as they are just a specific case of compound terms.
 
@@ -127,36 +123,25 @@ The head of a clause is changed so that it only contains variables. This can be 
 
 Unification between arbitrary values can be replaced with variable bindings and unification on these variables. A variable _binding_ ($arrow.l$) differs from unification ($equiv$) in that it creates an equivalence between the variable and the value, but does not attempt to unify them. By using this translation, the engine only needs to implement unification between variables.
 
-#figure(
-  placement: auto,
-  grid(
-    columns: (45%, 45%),
-    column-gutter: 10pt,
-    listing(header: [*User-Facing Syntax*])[
-      ```pl
-      allLess(_, []).
+The user-facing syntax:
+```pl
+allLess(_, []).
+allLess(V1, [V2 | Rest]) :-
+    V2 < V1,
+    allLess(V1, Rest).
+```
+Would be translated to:
+```pl
+allLess(T1, T2) {T3} :-
+  T3 ← nil(),
+  T2 ≡ T3.
 
-      allLess(V1, [V2 | Rest]) :-
-          V2 < V1,
-          allLess(V1, Rest).
-      ```
-    ],
-    listing(header: [*Internal Syntax*])[
-      ```pl
-      allLess(T1, T2) {T3} :-
-        T3 ← nil(),
-        T2 ≡ T3.
-
-      allLess(V1, T1) {V2, Rest, T2} :-
-        T2 ← cons(V2, Rest),
-        T1 ≡ T2,
-        V2 < V1,
-        allLess(V1, Rest).
-      ```
-    ],
-  ),
-  caption: [Comparison between user-facing and internal syntax for an `allLess/2` predicate, from Dewey and Hardekopf @dewey_mini.],
-) <lst:syntax_comparison>
+allLess(V1, T1) {V2, Rest, T2} :-
+  T2 ← cons(V2, Rest),
+  T1 ≡ T2,
+  V2 < V1,
+  allLess(V1, Rest).
+```
 
 == Rust
 #todo(done: true)[History and uses]
@@ -168,7 +153,7 @@ Unification between arbitrary values can be replaced with variable bindings and 
 
 Rust is a modern systems programming language first released in 2010 by Mozilla. The main focus of Rust is memory safety whilst maintaining high performance, making it a popular choice for tasks traditionally handled by C or C++ @bugden_rust_2022. As a major example, Rust has been adopted as one of the languages accepted into the Linux kernel @nichols_rust_2024.
 
-Anyone who has written C or C++ will be familiar with issues such as buffer overflows, memory leaks, and use-after-free errors. Rust uses an ownership model, where there is always exactly one owner of memory at any given time, to prevent these issues. When sharing data#footnote[For instance, by passing arguments to a function.], the user can choose to transfer ownership (moving), create an immutable reference (borrowing), or clone the data. The memory is automatically freed when its owner goes out of scope, preventing the need to manually manage memory @bugden_rust_2022. It should be noted that these restrictions can be escaped using `unsafe` blocks, allowing the user to manually manage memory if absolutely necessary, whilst making these regions of code explicit and easily identifiable @rust-lang.
+Anyone who has written C or C++ will be familiar with issues such as buffer overflows, memory leaks, and use-after-free errors. Rust uses an ownership model, where there is always exactly one owner of memory at any given time, to prevent these issues. When sharing data, the user can choose to transfer ownership (moving), create an immutable reference (borrowing), or clone the data. The memory is automatically freed when its owner goes out of scope, preventing the need to manually manage memory @bugden_rust_2022. It should be noted that these restrictions can be escaped using `unsafe` blocks, allowing the user to manually manage memory if absolutely necessary, whilst making these regions of code explicit and easily identifiable @rust-lang.
 
 As well as safety, Rust has modern features such as options and pattern matching, a powerful macro system, and a rich type system with generics and traits. It manages to provide these features whilst still being a compiled language with performance comparable to C and C++ @bugden_rust_2022.
 
@@ -183,30 +168,42 @@ The language also has good documentation features, with `rustdoc` able to genera
 #todo[How it would integrate with Prolog]
 #todo[Extra use it would provide]
 
-Fuzzy Logic was introduced in 1965 by Lotfi Zadeh as a way to deal with the uncertainty and imprecision inherent in many real-world applications @zadeh_fuzzy_1965.
+As a stretch goal, the Prolog engine will be extended to support fuzzy logic. Fuzzy Logic was introduced in 1965 by Lotfi Zadeh as a way to deal with the uncertainty and imprecision inherent in many real-world applications @zadeh_fuzzy_1965.
 
 In a standard boolean logic system, propositions are either true or false. This can be expanded to a multi-valued logic system, where propositions take on values from a finite set $T$. In fuzzy logic, this is expanded further to allow truth values taken from the continuous interval $[0, 1]$, where 0 is the boolean false, 1 is the boolean true, and values in between represent varying degrees of truth @zadeh_fuzzy_1988.
 
-This allows for predicates to be evaluated with a degree of truth, rather than just true or false. For example the predicates 'tall', 'ill', or 'tired' are best evaluated as fuzzy predicates instead of boolean predicates @zadeh_fuzzy_1988.
+Using fuzzy logic allows for predicates to be evaluated with a degree of truth, rather than just true or false. For example the predicates 'tall', 'ill', or 'tired' are best evaluated as fuzzy predicates instead of boolean predicates @zadeh_fuzzy_1988.
 
 Boolean logic allows for only two quantifiers: 'for all' and 'there exists'. In contrast fuzzy logic allows for any number of such quantifers, such as 'most', 'several', or 'about ten' @zadeh_fuzzy_1988.
 
-Integrating fuzzy logic with Prolog would allow for more nuanced reasoning in situations where information is uncertain or imprecise. Instead of predicates being simply true or false, they could be evaluated to a floating-point value representing their degree of truth. To implement this, we need replacements for the boolean operators _conjunction_, _disjunction_, and _negation_. Using minimum for conjuction, maximum for disjunction, and $1 - p$ for negation, we can maintain the properties of these operators while allowing for fuzzy truth values @zadeh_fuzzy_1965. Consider how with $italic("true") = 1$ and $italic("false") = 0$ these operators behave identically to their boolean counterparts.
+The boolean operators _conjunction_, _disjunction_, and _negation_ need to be replaced with fuzzy equivalents. A common way this is done is to use minimum for conjuction, maximum for disjunction, and $1 - p$ for negation, called the _Zadeh operators_ @zadeh_fuzzy_1965. Consider how with $italic("true") = 1$ and $italic("false") = 0$ these operators behave identically to their boolean counterparts.
 
-A fuzzy predicate would have the syntax `predicate(args) {degree}.`, where `degree` is a floating-point value between 0 and 1 representing the degree of truth of the predicate. For example, `tall(alice) {0.8}.` would indicate that Alice is tall to a degree of 0.8.
+Membership functions evaluate the degree of truth of a predicate for a given input. For example, a trapezoidal membership function for the predicate 'warm' could define temperature values below 15 degrees as 0, between 20 and 25 degrees as 1, above 30 degrees as 0, and values in between as a linear interpolation between these points @zadeh_fuzzy_1988.
 
-When evaluating a query, the engine would need to calculate the degree of truth of the query based on the degrees of truth of the predicates involved and the fuzzy logic operators. For example, if we have `tall(alice) {0.8}.` and `tall(bob) {0.6}.`, then the query `tall(X).` would return `X = alice {0.8}; X = bob {0.6};`. For clauses with multiple goals in the body, the degree of truth of the clause would be calculated using the conjunction operator.
+Integrating fuzzy logic into Prolog would require predicates to be evaluated with a degree of truth, and the unification algorithm to be modified to take this into account.
+
+The syntax `:~`  would be used  instead of `:-` to define fuzzy clauses. For example:
+```pl
+experienced(X) :~ trapezoidal(2, 5, 10, 15).
+
+skilled(alice) :~ 0.8.
+skilled(bob) :~ 0.6.
+
+good_candidate(X) :~ skilled(X), experienced(X).
+```
+Defines the fuzzy predicate `experienced/1` with a trapezoidal membership function, and the fuzzy predicate `skilled/1` with specific truth values for Alice and Bob. The `good_candidate/1` predicate is then defined as the conjunction of `skilled/1` and `experienced/1`, which would be evaluated using the fuzzy conjunction operator.
 
 = Project Specification
 == User Requirements <sec:user_requirements>
 I have identified two main personas for this project. The first is someone interested in logic programming and Prolog, who wants to understand how a Prolog engine works. This user would be interested in the implementation details of the engine, and would therefore expect it to be well-documented and easy to read. The second persona is someone who wants to execute Prolog queries, either by writing Prolog programs and executing them with the engine, or by using the engine as a library in other Rust programs.
 
-The design would be considered to meet these user's requirements if it:
-+ Is implemented in modern Rust, using idiomatic Rust features and best practices to ensure the code is clear and maintainable. Any `unsafe` code would be clearly marked and justified.
-+ Has clear documentation, including explanatory comments in the code and generated documentation of the API. Both personas would benefit from clear documentation, the first to understand the implementation, and the second as they may wish to verify or extend the engine's functionality.
-+ Is structured in a way that is easy to understand, with clear separation between the parser, translator, and engine. As with clear documentation, this would benefit both personas.
+The design should be implemented in modern Rust, using idiomatic Rust features and best practices to ensure the code is clear and maintainable. Any unsafe code should be clearly marked and justified, as this would be important for the first persona who is interested in understanding the implementation details of the engine.
 
-As well as these general requirements, the implementation will be verified with a use case that is designed to test the key features of the engine, such as unification and backtracking.
+Clear documentation, including both explanatory comments in the code and documentation comments for the API, would be important for both personas. The first persona would benefit from clear documentation to understand the implementation, while the second persona may wish to verify or extend the engine's functionality.
+
+The structure of the code should be easy to understand, with clear separation between the parser, translator, and engine. This would benefit both personas, as the first would be interested in understanding the implementation details of each component, while the second may wish to verify or extend the functionality of specific components.
+
+As well as the above general requirements, the implementation will be verified with a use case that is designed to test the key features of the engine, such as unification and backtracking.
 
 == Success Criteria <sec:success_criteria>
 #todo(done: true)[User]
@@ -214,23 +211,17 @@ As well as these general requirements, the implementation will be verified with 
 #todo(done: true)[All fully justified]
 This project's success criteria are based on the user's requirements identified in @sec:user_requirements.
 
-There are the following functional requirements:
-+ The parser should be implemented correctly:
-  + It should be able to read valid Mini-Prolog syntax and convert it into an internal representation.
-  + It should provide meaningful error messages for invalid syntax.
-+ The execution model should be implemented correctly:
-  + User-facing syntax should be correctly translated to the internal syntax.
-  + Unification should be implemented following the design given by Dewey and Hardekopf @dewey_mini.
-  + The execution of Prolog queries should follow the design given by Dewey and Hardekopf @dewey_mini, with correct handling of the goal stack, environment, and choice stack.
-  + A predefined set of test cases should be correctly evaluated by the engine, producing the expected results.
-+ It should be possible to execute Prolog queries using the engine:
-  + By loading Prolog programs and executing queries against them.
-  + By using the engine as a library in other Rust programs.
-+ It should be possible to implement the identified validation use case using the engine, and it should produce the expected results.
-There are also non-functional requirements related to the user experience and code quality:
-+ The code should be well-documented, with clear explanations of the implementation and usage.
-+ The code should be clear and maintainable, following Rust best practices and idiomatic usage. Any `unsafe` code should be clearly marked and justified.
-+ The performance of the engine should be reasonable for a simple Prolog implementation, although it is not expected to be competitive with highly optimized Prolog engines.
+To be successful, the parser must be able to read valid Mini-Prolog syntax and use it to generate an abstract syntax tree representing the user-facing syntax. It must also provide meaningful error messages when it encounters invalid syntax.
+
+The translator must correctly translate the user-facing syntax tree into an internal syntax tree representing Dewey and Hardekopf's internal syntax. This includes correctly handling the translation of lists, pattern matching, and unification.
+
+The execution engine must correctly implement the execution model defined by Dewey and Hardekopf, including the handling of the goal stack, environment, and choice stack. The unification algorithm must be implemented correctly according to their design.
+
+These three components will be individually tested with a comprehensive suite of test cases. The entire system will also be tested with a predefined set of Prolog programs and queries, which should produce the expected results. The engine should be usable for executing Prolog queries both by loading Prolog programs and by using the engine as a library in other Rust programs.
+
+The identified validation use case should be implemented using the engine, and it should produce the expected results. This will verify that the implementation meets the user requirements and success criteria.
+
+As well as functional requirements, the code should be well-documented, with clear explanations of the implementation and usage. The code should be clear and maintainable, following Rust best practices and idiomatic usage. Any unsafe code should be clearly marked and justified. The performance of the engine should be reasonable for a simple Prolog implementation, although it is not expected to be competitive with highly optimized Prolog engines.
 
 = Design
 == High-Level Architecture
@@ -347,7 +338,11 @@ This algorithm is implemented as a method on the equivalence struct. When called
 
 This algorithm, as given by Dewey and Hardekopf, is simple to understand and implement, making it suitable for this project. However, given the importance of unification to the performance of a Prolog engine, there are more efficient algorithms that could be implemented in future work, for example that used by the WAM @ait-kaci_warrens_1991.
 
-== Handling Fuzzy Logic (Stretch)
+== Handling Fuzzy Logic
+In order to support fuzzy logic, most parts of the engine would need to be modified.
+
+The parser and abstract syntax tree would need to be modified to support the new syntax for fuzzy clauses and predicates, as well as the internal representation.
+
 
 = Testing
 == Correctness

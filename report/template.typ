@@ -1,4 +1,4 @@
-#import "@preview/codly:1.3.0": *
+// #import "@preview/codly:1.3.0": *
 
 // Based on https://github.com/talal/ilm/blob/main/lib.typ
 
@@ -77,14 +77,14 @@
   // The content of your work.
   body,
 ) = {
-  show: codly-init
+  // show: codly-init
 
   // Set the document's metadata.
   set document(title: title, author: author)
 
   // Set fonts.
-  set text(size: 11pt)
-  show raw: set text(font: "FiraCode Nerd Font Mono", size: 9pt)
+  set text(size: 11pt, font: "New Computer Modern")
+  show raw: set text(font: "New Computer Modern Math")
 
   // Set paragraph properties.
   show heading: set block(above: 1.4em, below: 1em)
@@ -160,6 +160,8 @@
     table-of-contents
   }
 
+  counter(page).update(0)
+
   // Configure page numbering and footer.
   set page(
     footer: context {
@@ -186,12 +188,12 @@
   set math.equation(numbering: "(1)")
 
   // Display inline code in a small box that retains the correct baseline.
-  show raw.where(block: false): box.with(
-    fill: fill-color.darken(2%),
-    inset: (x: 3pt, y: 0pt),
-    outset: (y: 3pt),
-    radius: 2pt,
-  )
+  // show raw.where(block: false): box.with(
+  //   fill: fill-color.darken(2%),
+  //   inset: (x: 3pt, y: 0pt),
+  //   outset: (y: 3pt),
+  //   radius: 2pt,
+  // )
 
   // Display block code with padding.
   show raw.where(block: true): block.with(inset: (x: 5pt), breakable: false)
@@ -314,9 +316,9 @@
   )
 }
 
-#let listing(header: none, width: auto, body) = {
-  block(width: width)[
-    #codly(header: header)
-    #body
-  ]
-}
+// #let listing(header: none, width: auto, body) = {
+//   block(width: width)[
+//     #codly(header: header)
+//     #body
+//   ]
+// }
