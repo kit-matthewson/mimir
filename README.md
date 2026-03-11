@@ -4,6 +4,8 @@
 
 This project is a Rust implementation of Mini-Prolog, completed for a Computer Science dissertation at the University of Exeter. Project documentation is hosted [here](https://kit-matthewson.github.io/mimir).
 
+This repository also includes, under the `report` directory, the project report written in [Typst](https://typst.app/).
+
 ## Scope
 Mimir implements Mini-Prolog, a simplified version of Prolog from [Kyle Dewey and Ben Hardekopf](https://kyledewey.github.io/cs162w15/handouts/handout7-miniprolog.pdf).
 
@@ -32,3 +34,15 @@ To run the complete test suite, use:
 ```
 cargo test
 ```
+
+### Justfile
+This project also includes a `justfile` (similar to a Makefile). Just can be installed with Cargo:
+
+```
+cargo install just
+```
+
+Then, you can run the tasks defined in the `justfile`:
+- `just run` - Runs the main program.
+- `just check` - Runs code checks including formatting and linting.
+- `just make-pdf` - Generate a PDFs for the project report.
