@@ -25,7 +25,7 @@ pub use error::MimirError;
 macro_rules! var_vec {
     ( $($x:expr),*) => {
         vec![$(
-            Variable::new($x),
+            $crate::engine::Variable::new($x),
         )*]
     };
 }

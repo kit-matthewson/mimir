@@ -20,6 +20,11 @@ pub fn program(input: &str) -> nom::IResult<&str, Vec<ast::Clause>> {
     many0(ws(ast::Clause::parse)).parse(input)
 }
 
+/// Parses a single clause, which can be used for queries as well as program clauses.
+pub fn clause(input: &str) -> nom::IResult<&str, ast::Clause> {
+    ws(ast::Clause::parse).parse(input)
+}
+
 /// Takes a parser and produces a new parser that also consumes leading and tracing whitespace.
 ///
 /// This implementation is based on the `ws` combinator from the nom documentation.
@@ -36,14 +41,7 @@ where
 ///
 /// Numbers can be positive or negative integers, and can contain underscores as digit separators.
 /// Numbers must fit within the range of i64.
-///
-/// # Example
-/// ```
-/// # use mimir::parser::number;
-/// let (_, num) = number("1_234_567").unwrap();
-/// assert_eq!(num, 1234567);
-/// ```
-pub fn number(input: &str) -> nom::IResult<&str, i64> {
+fn number(input: &str) -> nom::IResult<&str, i64> {
     let (input, sign) = opt(alt((tag("-"), tag("+")))).parse(input)?;
     // Use recognize to capture the full digit string instead of parsing to a vector of &str
     let (input, digits) = recognize(separated_list1(tag("_"), digit1)).parse(input)?;

@@ -1,41 +1,72 @@
-use mimir::{clause, engine::*, var_vec};
+use mimir::{engine::Query, var_vec};
 
-fn main() -> Result<(), mimir::error::EngineError> {
-    let program = vec![
-        clause!(is_ten(T1) { T2 } :- Goal::Conjunction(
-            Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::Num(10))),
-            Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T2")))
-        )),
-        clause!(is_ten_or_five(T1) { T2 } :- Goal::Disjunction(
-                    Box::new(Goal::Check {
-                        functor: "is_ten".to_string(),
-                        params: var_vec!["T1"],
-                    }),
-                    Box::new(Goal::Conjunction(
-                        Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::Num(5))),
-                        Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T2")))
-                    ))
-                )
-        ),
-    ];
+fn main() -> Result<(), mimir::error::MimirError> {
+    let program = r"
+is_ten(X) :- X = 10.
+is_ten_or_five(X) :- X = 10.
+is_ten_or_five(X) :- X = 5.
+is_gt_ten(X) :- X > 10.
+    ";
 
-    for clause in &program {
-        println!("{}", clause);
-    }
+    println!("{}", program);
 
-    let engine = Engine::new(program);
-
-    let query = Query {
+    let query = mimir::engine::Query {
         local_vars: var_vec!["X"],
-        goal: Goal::Check {
+        goal: mimir::engine::Goal::Check {
+            functor: "is_ten".to_string(),
+            params: mimir::var_vec!["X"],
+        },
+    };
+    execute(program, query)?;
+    println!();
+
+    let query = mimir::engine::Query {
+        local_vars: var_vec!["X"],
+        goal: mimir::engine::Goal::Check {
             functor: "is_ten_or_five".to_string(),
             params: var_vec!["X"],
         },
     };
+    execute(program, query)?;
+    println!();
 
-    println!("\n{}", query);
+    let query = mimir::engine::Query {
+        local_vars: mimir::var_vec!["X"],
+        goal: mimir::engine::Goal::Conjunction(
+            Box::new(mimir::engine::Goal::Assign(
+                mimir::engine::Variable::new("X"),
+                mimir::engine::RHSTerm::Num(5),
+            )),
+            Box::new(mimir::engine::Goal::Check {
+                functor: "is_gt_ten".to_string(),
+                params: mimir::var_vec!["X"],
+            }),
+        ),
+    };
+    execute(program, query)?;
 
+    Ok(())
+}
+
+fn execute(program: &str, query: Query) -> Result<(), mimir::error::MimirError> {
+    let (_, user_program) = mimir::parser::program(program).unwrap();
+    let program = user_program
+        .into_iter()
+        .map(mimir::translator::translate)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // for clause in &program {
+    //     // println!("{}", clause);
+    // }
+
+    let engine = mimir::engine::Engine::new(program);
     let solutions = engine.execute(query.clone())?;
+
+    println!("{}", query);
+    if solutions.is_empty() {
+        println!("  false.");
+        return Ok(());
+    }
 
     for solution in solutions.iter() {
         print!("  ");
@@ -50,4 +81,60 @@ fn main() -> Result<(), mimir::error::EngineError> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn test_is_ten() {
+        let input = "is_ten(X) :- X = 10.";
+        let (_, user_program) = mimir::parser::clause(input).unwrap();
+        let program = mimir::translator::translate(user_program).unwrap();
+
+        let query = mimir::engine::Query {
+            local_vars: mimir::var_vec!["X"],
+            goal: mimir::engine::Goal::Check {
+                functor: "is_ten".to_string(),
+                params: mimir::var_vec!["X"],
+            },
+        };
+
+        let engine = mimir::engine::Engine::new(vec![program]);
+        let solutions = engine.execute(query).unwrap();
+
+        assert_eq!(solutions.len(), 1);
+        let (env, equiv) = &solutions[0];
+        let value = env.get(&mimir::engine::Variable::new("X"), equiv).unwrap();
+        assert_eq!(value, mimir::engine::Value::Number(10));
+    }
+
+    #[test]
+    fn test_is_gt_ten() {
+        let input = "is_gt_ten(X) :- X > 10.";
+        let (_, user_program) = mimir::parser::clause(input).unwrap();
+        let program = mimir::translator::translate(user_program).unwrap();
+
+        let query = mimir::engine::Query {
+            local_vars: mimir::var_vec!["X"],
+            goal: mimir::engine::Goal::Conjunction(
+                Box::new(mimir::engine::Goal::Assign(
+                    mimir::engine::Variable::new("X"),
+                    mimir::engine::RHSTerm::Num(11),
+                )),
+                Box::new(mimir::engine::Goal::Check {
+                    functor: "is_gt_ten".to_string(),
+                    params: mimir::var_vec!["X"],
+                }),
+            ),
+        };
+
+        let engine = mimir::engine::Engine::new(vec![program]);
+        let solutions = engine.execute(query).unwrap();
+
+        assert_eq!(solutions.len(), 1);
+        let (env, equiv) = &solutions[0];
+        let value = env.get(&mimir::engine::Variable::new("X"), equiv).unwrap();
+        assert_eq!(value, mimir::engine::Value::Number(11));
+    }
 }

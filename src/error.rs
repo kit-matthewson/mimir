@@ -11,6 +11,16 @@ use crate::engine::*;
 pub enum MimirError {
     #[error("engine error: {0}")]
     Engine(#[from] EngineError),
+    #[error("translation error: {0}")]
+    Translation(#[from] TranslationError),
+}
+
+/// An error that may occur during AST to internal representation translation.
+#[allow(missing_docs)]
+#[derive(Debug, Error)]
+pub enum TranslationError {
+    #[error("list term found after desugaring - invariant violation")]
+    ListNotDesugared,
 }
 
 /// An error that may occur in the execution of the engine.
