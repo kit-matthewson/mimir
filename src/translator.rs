@@ -967,29 +967,26 @@ mod tests {
         let mut goal_count = 0;
 
         // Skip the outermost Bool(true) from body_goals
-        match translated.body() {
-            engine::Goal::Conjunction(_, right) => {
-                let mut current = right.as_ref();
+        if let engine::Goal::Conjunction(_, right) = translated.body() {
+            let mut current = right.as_ref();
 
-                // Walk through the nested conjunctions
-                loop {
-                    match current {
-                        engine::Goal::Conjunction(left, right_inner) => {
-                            if matches!(left.as_ref(), engine::Goal::Assign(_, _)) {
-                                goal_count += 1;
-                            }
-                            current = right_inner.as_ref();
-                        }
-                        engine::Goal::Bool(true) => break,
-                        engine::Goal::Assign(_, _) => {
+            // Walk through the nested conjunctions
+            loop {
+                match current {
+                    engine::Goal::Conjunction(left, right_inner) => {
+                        if matches!(left.as_ref(), engine::Goal::Assign(_, _)) {
                             goal_count += 1;
-                            break;
                         }
-                        _ => break,
+                        current = right_inner.as_ref();
                     }
+                    engine::Goal::Bool(true) => break,
+                    engine::Goal::Assign(_, _) => {
+                        goal_count += 1;
+                        break;
+                    }
+                    _ => break,
                 }
             }
-            _ => {}
         }
 
         assert_eq!(

@@ -9,7 +9,7 @@ run:
 check:
 	cargo check
 	cargo fmt --check
-	cargo clippy
+	cargo clippy --all-targets --all-features -- -D warnings
 	cargo test
 
 make-pdf:
