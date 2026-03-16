@@ -9,7 +9,7 @@
 #set text(lang: "en")
 
 #show: template.with(
-  title: [A Rust Implementation of Mini-Prolog with Fuzzy Logic Support],
+  title: [A Rust Implementation of Mini-Prolog including Fuzzy Logic Support],
   author: "Kit Matthewson",
   student-id: "730002704",
   date: datetime.today(),
