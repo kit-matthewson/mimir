@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use crate::{engine::representation::*, error::EngineError};
 
 /// Possible goals. These act as the body of clauses and the elements of the goal stack.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Goal {
     /// A conjunction of two goals: both must be true.
     Conjunction(Box<Goal>, Box<Goal>),
@@ -98,7 +98,7 @@ impl Choice {
 ///
 /// Variables always need to be mapped to some value, so placeholders are used for unassigned variables.
 /// When a variable is looked up, its value's set representative is returned according to the current equivalence.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
     mapping: HashMap<Variable, Value>,
 }
@@ -351,6 +351,8 @@ impl Default for Equivalence {
 
 #[cfg(test)]
 mod tests {
+    use ordered_float::OrderedFloat;
+
     use crate::var_vec;
 
     use super::*;
@@ -380,7 +382,10 @@ mod tests {
 
         // Test environment for symbol
         let symbol = Symbol::new("sym", var_vec!["X", "Y"], var_vec!["Z"]);
-        let args = vec![Value::Number(10), Value::Number(20)];
+        let args = vec![
+            Value::Number(OrderedFloat::from(10)),
+            Value::Number(OrderedFloat::from(20)),
+        ];
 
         let env = Environment::for_symbol(&symbol, &args, &mut pgen).unwrap();
         let equiv = Equivalence::new();
@@ -388,11 +393,11 @@ mod tests {
         // Parameters should be mapped to arguments
         assert_eq!(
             env.get(&Variable::new("X"), &equiv).unwrap(),
-            Value::Number(10)
+            Value::Number(OrderedFloat::from(10))
         );
         assert_eq!(
             env.get(&Variable::new("Y"), &equiv).unwrap(),
-            Value::Number(20)
+            Value::Number(OrderedFloat::from(20))
         );
         assert!(matches!(
             env.get(&Variable::new("Z"), &equiv).unwrap(),
@@ -411,11 +416,11 @@ mod tests {
 
         assert_eq!(
             env.get(&Variable::new("X"), &equiv).unwrap(),
-            Value::Number(10)
+            Value::Number(OrderedFloat::from(10))
         );
         assert_eq!(
             env.get(&Variable::new("Y"), &equiv).unwrap(),
-            Value::Number(20)
+            Value::Number(OrderedFloat::from(20))
         );
         assert!(matches!(
             env.get(&Variable::new("Z"), &equiv).unwrap(),
@@ -445,7 +450,7 @@ mod tests {
     fn test_environment_assignment() {
         let mut env = Environment::empty();
         let var = Variable::new("X");
-        let val = Value::Number(42);
+        let val = Value::Number(OrderedFloat::from(42));
 
         env.assign(&var, val.clone());
 
@@ -496,8 +501,8 @@ mod tests {
     fn test_equivalence_unification() {
         let mut equiv = Equivalence::new();
 
-        let val1 = Value::Number(10);
-        let val2 = Value::Number(20);
+        let val1 = Value::Number(OrderedFloat::from(10));
+        let val2 = Value::Number(OrderedFloat::from(20));
         let placeholder = Value::Placeholder(1);
 
         // Unify two identical values
@@ -512,21 +517,30 @@ mod tests {
         assert!(equiv.unify(&val1, &val2).is_err());
 
         // Unify two compounds
-        let comp1 = Value::Ground("f".to_string(), vec![Value::Number(1), placeholder.clone()]);
-        let comp2 = Value::Ground("f".to_string(), vec![Value::Number(1), Value::Number(30)]);
+        let comp1 = Value::Ground(
+            "f".to_string(),
+            vec![Value::Number(OrderedFloat::from(1)), placeholder.clone()],
+        );
+        let comp2 = Value::Ground(
+            "f".to_string(),
+            vec![
+                Value::Number(OrderedFloat::from(1)),
+                Value::Number(OrderedFloat::from(30)),
+            ],
+        );
 
         assert!(equiv.unify(&comp1, &comp2).is_ok());
         assert_eq!(
             equiv.set_representative(&placeholder).unwrap(),
-            Value::Number(30)
+            Value::Number(OrderedFloat::from(30))
         );
 
         // Unify compounds with different functors should fail
-        let comp3 = Value::Ground("g".to_string(), vec![Value::Number(1)]);
+        let comp3 = Value::Ground("g".to_string(), vec![Value::Number(OrderedFloat::from(1))]);
         assert!(equiv.unify(&comp1, &comp3).is_err());
 
         // Unify compounds with different arities should fail
-        let comp4 = Value::Ground("f".to_string(), vec![Value::Number(1)]);
+        let comp4 = Value::Ground("f".to_string(), vec![Value::Number(OrderedFloat::from(1))]);
         assert!(equiv.unify(&comp1, &comp4).is_err());
     }
 
@@ -536,7 +550,7 @@ mod tests {
 
         let mut equiv = Equivalence::new();
 
-        let val1 = Value::Number(10);
+        let val1 = Value::Number(OrderedFloat::from(10));
         let val2 = pgen.new_placeholder();
         let val3 = pgen.new_placeholder();
 

@@ -417,6 +417,8 @@ fn collect_arith_expr_variables(expr: &ast::ArithExpr, vars: &mut HashSet<String
 
 #[cfg(test)]
 mod tests {
+    use ordered_float::OrderedFloat;
+
     use super::*;
 
     /// Helper to create an atom term
@@ -437,8 +439,8 @@ mod tests {
     }
 
     /// Helper to create a number term
-    fn num(n: i64) -> ast::Term {
-        ast::Term::Num(n)
+    fn num(n: f64) -> ast::Term {
+        ast::Term::Num(OrderedFloat::from(n))
     }
 
     /// Helper to create a compound term
@@ -531,7 +533,7 @@ mod tests {
         let clause = ast::Clause {
             head: ast::Compound {
                 functor: "test".to_string(),
-                params: vec![ast::Term::List(vec![num(1)])],
+                params: vec![ast::Term::List(vec![num(1.0)])],
             },
             body: vec![],
         };
@@ -548,7 +550,7 @@ mod tests {
         let clause = ast::Clause {
             head: ast::Compound {
                 functor: "test".to_string(),
-                params: vec![ast::Term::List(vec![num(1), num(2), num(3)])],
+                params: vec![ast::Term::List(vec![num(1.0), num(2.0), num(3.0)])],
             },
             body: vec![],
         };
@@ -618,7 +620,7 @@ mod tests {
         let clause = ast::Clause {
             head: ast::Compound {
                 functor: "test".to_string(),
-                params: vec![var("X"), atom("alice"), var("Y"), num(42)],
+                params: vec![var("X"), atom("alice"), var("Y"), num(42.0)],
             },
             body: vec![],
         };
@@ -662,7 +664,7 @@ mod tests {
             body: vec![ast::Goal::Relation(
                 var("X"),
                 ast::RelationalOp::LessThan,
-                num(10),
+                num(10.0),
             )],
         };
 
@@ -676,7 +678,7 @@ mod tests {
                 engine::Goal::Conjunction(assign, relation) => {
                     assert!(matches!(
                         assign.as_ref(),
-                        engine::Goal::Assign(_, engine::RHSTerm::Num(10))
+                        engine::Goal::Assign(_, engine::RHSTerm::Num(n)) if *n == OrderedFloat::from(10.0)
                     ));
                     assert!(matches!(
                         relation.as_ref(),
@@ -702,7 +704,7 @@ mod tests {
                 ast::RHS::Expr(ast::ArithExpr::Expr(
                     Box::new(ast::ArithExpr::Var(ast::Variable::Var("X".to_string()))),
                     ast::ArithOp::Add,
-                    Box::new(ast::ArithExpr::Num(1)),
+                    Box::new(ast::ArithExpr::Num(OrderedFloat::from(1.0))),
                 )),
             )],
         };
@@ -804,7 +806,10 @@ mod tests {
         let clause = ast::Clause {
             head: ast::Compound {
                 functor: "test".to_string(),
-                params: vec![compound("foo", vec![ast::Term::List(vec![num(1), num(2)])])],
+                params: vec![compound(
+                    "foo",
+                    vec![ast::Term::List(vec![num(1.0), num(2.0)])],
+                )],
             },
             body: vec![],
         };
@@ -825,7 +830,10 @@ mod tests {
             },
             body: vec![ast::Goal::Check(ast::Compound {
                 functor: "member".to_string(),
-                params: vec![var("X"), ast::Term::List(vec![num(1), num(2), num(3)])],
+                params: vec![
+                    var("X"),
+                    ast::Term::List(vec![num(1.0), num(2.0), num(3.0)]),
+                ],
             })],
         };
 
@@ -874,7 +882,7 @@ mod tests {
                     Box::new(ast::ArithExpr::Expr(
                         Box::new(ast::ArithExpr::Var(ast::Variable::Var("Y".to_string()))),
                         ast::ArithOp::Multiply,
-                        Box::new(ast::ArithExpr::Num(2)),
+                        Box::new(ast::ArithExpr::Num(OrderedFloat::from(2.0))),
                     )),
                 )),
             )],
@@ -893,7 +901,7 @@ mod tests {
         let clause = ast::Clause {
             head: ast::Compound {
                 functor: "fact".to_string(),
-                params: vec![num(42)],
+                params: vec![num(42.0)],
             },
             body: vec![],
         };
@@ -923,7 +931,9 @@ mod tests {
                             engine::Goal::Assign(var, rhs_term) => {
                                 assert_eq!(var.to_string(), param_name);
                                 match rhs_term {
-                                    engine::RHSTerm::Num(n) => assert_eq!(*n, 42),
+                                    engine::RHSTerm::Num(n) => {
+                                        assert_eq!(*n, OrderedFloat::from(42.0))
+                                    }
                                     _ => panic!("Expected a number RHS term"),
                                 }
                             }
@@ -949,7 +959,7 @@ mod tests {
         let clause = ast::Clause {
             head: ast::Compound {
                 functor: "test".to_string(),
-                params: vec![atom("alice"), num(42), atom("bob")],
+                params: vec![atom("alice"), num(42.0), atom("bob")],
             },
             body: vec![],
         };
@@ -1062,7 +1072,7 @@ mod tests {
         let clause = ast::Clause {
             head: ast::Compound {
                 functor: "test".to_string(),
-                params: vec![num(42)],
+                params: vec![num(42.0)],
             },
             body: vec![ast::Goal::Check(ast::Compound {
                 functor: "check".to_string(),
@@ -1132,7 +1142,7 @@ mod tests {
                 ast::RHS::Expr(ast::ArithExpr::Expr(
                     Box::new(ast::ArithExpr::Var(ast::Variable::Var("X".to_string()))),
                     ast::ArithOp::Add,
-                    Box::new(ast::ArithExpr::Num(1)),
+                    Box::new(ast::ArithExpr::Num(OrderedFloat::from(1.0))),
                 )),
             )],
         };
@@ -1198,7 +1208,10 @@ mod tests {
             },
             body: vec![ast::Goal::Check(ast::Compound {
                 functor: "member".to_string(),
-                params: vec![var("X"), ast::Term::List(vec![num(1), num(2), num(3)])],
+                params: vec![
+                    var("X"),
+                    ast::Term::List(vec![num(1.0), num(2.0), num(3.0)]),
+                ],
             })],
         };
 

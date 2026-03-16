@@ -1,4 +1,5 @@
 use mimir::{engine::Query, var_vec};
+use ordered_float::OrderedFloat;
 
 fn main() -> Result<(), mimir::error::MimirError> {
     let program = r"
@@ -35,7 +36,7 @@ is_gt_ten(X) :- X > 10.
         goal: mimir::engine::Goal::Conjunction(
             Box::new(mimir::engine::Goal::Assign(
                 mimir::engine::Variable::new("X"),
-                mimir::engine::RHSTerm::Num(5),
+                mimir::engine::RHSTerm::Num(OrderedFloat::from(5.0)),
             )),
             Box::new(mimir::engine::Goal::Check {
                 functor: "is_gt_ten".to_string(),
@@ -85,6 +86,7 @@ fn execute(program: &str, query: Query) -> Result<(), mimir::error::MimirError> 
 
 #[cfg(test)]
 mod tests {
+    use ordered_float::OrderedFloat;
 
     #[test]
     fn test_is_ten() {
@@ -106,7 +108,10 @@ mod tests {
         assert_eq!(solutions.len(), 1);
         let (env, equiv) = &solutions[0];
         let value = env.get(&mimir::engine::Variable::new("X"), equiv).unwrap();
-        assert_eq!(value, mimir::engine::Value::Number(10));
+        assert_eq!(
+            value,
+            mimir::engine::Value::Number(OrderedFloat::from(10.0))
+        );
     }
 
     #[test]
@@ -120,7 +125,7 @@ mod tests {
             goal: mimir::engine::Goal::Conjunction(
                 Box::new(mimir::engine::Goal::Assign(
                     mimir::engine::Variable::new("X"),
-                    mimir::engine::RHSTerm::Num(11),
+                    mimir::engine::RHSTerm::Num(OrderedFloat::from(11.0)),
                 )),
                 Box::new(mimir::engine::Goal::Check {
                     functor: "is_gt_ten".to_string(),
@@ -135,6 +140,9 @@ mod tests {
         assert_eq!(solutions.len(), 1);
         let (env, equiv) = &solutions[0];
         let value = env.get(&mimir::engine::Variable::new("X"), equiv).unwrap();
-        assert_eq!(value, mimir::engine::Value::Number(11));
+        assert_eq!(
+            value,
+            mimir::engine::Value::Number(OrderedFloat::from(11.0))
+        );
     }
 }

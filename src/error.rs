@@ -35,8 +35,8 @@ pub enum EngineError {
     UnexpectedParamNum { expected: usize, got: usize },
     #[error("variable '{0}' is not a number")]
     NotANumber(Variable),
-    #[error("attempted to divide by zero")]
-    DivByZero,
+    #[error("attempted to perform invalid arithmetic operation: {0} {1:?} {2}")]
+    InvalidArithOp(f64, ArithmeticOp, f64),
     #[error("attempted to find set representative of non-placeholder value '{0:?}'")]
     SetReprNonPlaceholder(Value),
     #[error("cannot unify the terms '{0:?}' and '{1:?}'")]

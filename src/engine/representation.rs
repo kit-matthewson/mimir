@@ -1,11 +1,13 @@
 //! Internal Mini-Prolog representation.
 
+use ordered_float::{Float, OrderedFloat};
+
 use crate::{engine::state::*, error::EngineError};
 
 /// Type for placeholder value IDs
 type PlaceholderID = u32;
 /// Type of numbers
-type Number = i64;
+type Number = OrderedFloat<f64>;
 
 /// A reference to a variable by name.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
@@ -35,9 +37,9 @@ impl std::fmt::Display for Variable {
 /// The value that a variable can take.
 ///
 /// This may be an uninitialised 'placeholder' value, a number, or a ground term.
-#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Value {
-    /// An i64 'Number' value.
+    /// An f64 'Number' value.
     Number(Number),
     /// A ground term. A ground term is a term that does not contain any variables.
     /// Essentially, a functor and a list of parameter values.
@@ -149,7 +151,10 @@ impl RelationalOp {
     /// assert!(op.evaluate(5, 10));
     /// assert!(!op.evaluate(10, 5));
     /// ```
-    pub fn evaluate(&self, a: Number, b: Number) -> bool {
+    pub fn evaluate<T: Into<Number>>(&self, a: T, b: T) -> bool {
+        let a = a.into();
+        let b = b.into();
+
         match self {
             RelationalOp::LessThan => a < b,
             RelationalOp::LessThanEqual => a <= b,
@@ -176,18 +181,18 @@ pub enum ArithmeticOp {
 
 impl ArithmeticOp {
     /// Evaluates two numbers with this operator.
-    ///
-    /// Uses saturating addition, subtraction, and multiplication so numbers are clamped to the range of `Number`.
-    /// Division by zero returns an error.
     pub fn evaluate(&self, a: Number, b: Number) -> Result<Number, EngineError> {
-        match self {
-            ArithmeticOp::Add => Ok(a.saturating_add(b)),
-            ArithmeticOp::Subtract => Ok(a.saturating_sub(b)),
-            ArithmeticOp::Multiply => Ok(a.saturating_mul(b)),
-            ArithmeticOp::Divide => match a.checked_div(b) {
-                Some(n) => Ok(n),
-                None => Err(EngineError::DivByZero),
-            },
+        let answer = match self {
+            ArithmeticOp::Add => a + b,
+            ArithmeticOp::Subtract => a - b,
+            ArithmeticOp::Multiply => a * b,
+            ArithmeticOp::Divide => a / b,
+        };
+
+        if answer.is_infinite() || answer.is_nan() {
+            Err(EngineError::InvalidArithOp(*a, *self, *b))
+        } else {
+            Ok(answer)
         }
     }
 }
@@ -212,9 +217,9 @@ impl ArithmeticOp {
 /// let env = Environment::empty();
 /// let equiv = Equivalence::new();
 /// let result = expr.evaluate(&env, &equiv).unwrap();
-/// assert_eq!(result, 20);
+/// assert_eq!(result, 20.0);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     /// A number.
     Num(Number),
@@ -288,7 +293,7 @@ impl From<Variable> for Expression {
 /// A term that can appear on the right-hand side of an assignment.
 ///
 /// This can be a literal number, an arithmetic expression, or a symbol (clause head).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RHSTerm {
     /// A literal number.
     Num(Number),
@@ -318,6 +323,11 @@ impl RHSTerm {
                 Ok(Value::Ground(sym.functor.clone(), values))
             }
         }
+    }
+
+    /// Create a number term.
+    pub fn num<T: Into<Number>>(n: T) -> Self {
+        RHSTerm::Num(n.into())
     }
 }
 
@@ -435,16 +445,18 @@ impl Symbol {
 /// A clause with head and body.
 ///
 /// The body is a single `Goal`, which can be a conjunction or disjunction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Clause {
     /// The symbol (functor, parameters, and local vars) of the clause.
     head: Symbol,
     /// The body goal of the clause.
     body: Goal,
+    /// If the clause is fuzzy, it will have a truth value expression. If not, this is `None`.
+    truth_value: Option<Expression>,
 }
 
 impl Clause {
-    /// Create a new clause.
+    /// Create a new crisp clause.
     ///
     /// # Example
     /// ```
@@ -459,7 +471,35 @@ impl Clause {
     /// assert_eq!(clause.body(), &Goal::Bool(true));
     /// ```
     pub fn new(head: Symbol, body: Goal) -> Self {
-        Clause { head, body }
+        Clause {
+            head,
+            body,
+            truth_value: None,
+        }
+    }
+
+    /// Create a new fuzzy clause.
+    ///
+    /// # Example
+    /// ```
+    /// # use mimir::engine::{Clause, Goal, Variable, Symbol, Expression};
+    /// # use mimir::var_vec;
+    /// let clause = Clause::fuzzy(
+    ///    Symbol::new("my_clause", var_vec!["X", "Y"], vec![]),
+    ///    Goal::Bool(true),
+    ///    Expression::number(0.8),
+    /// );
+    /// assert_eq!(clause.head().functor(), "my_clause");
+    /// assert_eq!(clause.arity(), 2);
+    /// assert_eq!(clause.body(), &Goal::Bool(true));
+    /// assert_eq!(clause.truth_value(), &Some(Expression::number(0.8)));
+    /// ```
+    pub fn fuzzy(head: Symbol, body: Goal, truth_value: Expression) -> Self {
+        Clause {
+            head,
+            body,
+            truth_value: Some(truth_value),
+        }
     }
 
     /// Gets the arity (number of parameters) of this clause.
@@ -470,6 +510,12 @@ impl Clause {
     /// Gets the functor (name) of this clause.
     pub fn functor(&self) -> &str {
         self.head.functor()
+    }
+
+    /// Gets the truth value expression of this clause, if it is fuzzy.
+    /// Returns `None` if this clause is crisp.
+    pub fn truth_value(&self) -> &Option<Expression> {
+        &self.truth_value
     }
 
     /// Gets the head (symbol) of this clause.
@@ -604,7 +650,7 @@ mod tests {
         let n = Value::num(10);
         let p = Value::Placeholder(5);
 
-        assert_eq!(n.get_number(), Some(10));
+        assert_eq!(n.get_number(), Some(OrderedFloat::from(10.0)));
         assert_eq!(p.get_number(), None);
 
         assert_eq!(n.get_placeholder_id(), None);
@@ -619,8 +665,8 @@ mod tests {
 
         for _ in 0..100 {
             let new = pgen.new_placeholder();
-            assert!(!used.contains(&new));
-            used.insert(new);
+            assert!(!used.contains(&new.get_placeholder_id().unwrap()));
+            used.insert(new.get_placeholder_id().unwrap());
         }
     }
 
@@ -641,8 +687,8 @@ mod tests {
 
     #[test]
     fn test_relational_ops() {
-        let a = 10;
-        let b = 15;
+        let a = OrderedFloat::from(10.0);
+        let b = OrderedFloat::from(15.0);
 
         assert!(RelationalOp::LessThan.evaluate(a, b));
         assert!(RelationalOp::LessThanEqual.evaluate(a, b));
@@ -654,21 +700,41 @@ mod tests {
 
     #[test]
     fn test_arithmetic_ops() {
-        let a = 20;
-        let b = 5;
+        let a = OrderedFloat::from(20.0);
+        let b = OrderedFloat::from(5.0);
 
-        assert_eq!(ArithmeticOp::Add.evaluate(a, b).unwrap(), 25);
-        assert_eq!(ArithmeticOp::Subtract.evaluate(a, b).unwrap(), 15);
-        assert_eq!(ArithmeticOp::Multiply.evaluate(a, b).unwrap(), 100);
-        assert_eq!(ArithmeticOp::Divide.evaluate(a, b).unwrap(), 4);
+        assert_eq!(
+            ArithmeticOp::Add.evaluate(a, b).unwrap(),
+            OrderedFloat::from(25.0)
+        );
+        assert_eq!(
+            ArithmeticOp::Subtract.evaluate(a, b).unwrap(),
+            OrderedFloat::from(15.0)
+        );
+        assert_eq!(
+            ArithmeticOp::Multiply.evaluate(a, b).unwrap(),
+            OrderedFloat::from(100.0)
+        );
+        assert_eq!(
+            ArithmeticOp::Divide.evaluate(a, b).unwrap(),
+            OrderedFloat::from(4.0)
+        );
 
-        let max = Number::MAX;
-        let min = Number::MIN;
+        let max = OrderedFloat::from(f64::MAX);
+        let min = OrderedFloat::from(f64::MIN);
 
-        assert_eq!(ArithmeticOp::Add.evaluate(max, 1).unwrap(), max);
-        assert_eq!(ArithmeticOp::Subtract.evaluate(min, 1).unwrap(), min);
-        assert_eq!(ArithmeticOp::Multiply.evaluate(max, 2).unwrap(), max);
-        assert!(ArithmeticOp::Divide.evaluate(a, 0).is_err());
+        assert!(ArithmeticOp::Add.evaluate(max, max).is_err(),);
+        assert!(ArithmeticOp::Subtract.evaluate(min, max).is_err(),);
+        assert!(
+            ArithmeticOp::Multiply
+                .evaluate(max, OrderedFloat::from(2.0))
+                .is_err()
+        );
+        assert!(
+            ArithmeticOp::Divide
+                .evaluate(a, OrderedFloat::from(0.0))
+                .is_err()
+        );
     }
 
     #[test]
@@ -677,57 +743,76 @@ mod tests {
         let equiv = Equivalence::new();
 
         let expr = Expression::binary(
-            10,
-            Expression::binary(5, 2, ArithmeticOp::Multiply),
+            OrderedFloat::from(10.0),
+            Expression::binary(
+                OrderedFloat::from(5.0),
+                OrderedFloat::from(2.0),
+                ArithmeticOp::Multiply,
+            ),
             ArithmeticOp::Add,
         );
 
         let result = expr.evaluate(&env, &equiv).unwrap();
-        assert_eq!(result, 20);
+        assert_eq!(result, OrderedFloat::from(20.0));
 
         let mut env = Environment::empty();
-        env.assign(&Variable::new("X"), Value::num(3));
+        env.assign(&Variable::new("X"), Value::num(3.0));
 
         let expr = Expression::binary(
-            Expression::binary(20, 5, ArithmeticOp::Subtract),
+            Expression::binary(
+                OrderedFloat::from(20.0),
+                OrderedFloat::from(5.0),
+                ArithmeticOp::Subtract,
+            ),
             Expression::variable("X"),
             ArithmeticOp::Divide,
         );
 
         let result = expr.evaluate(&env, &equiv).unwrap();
-        assert_eq!(result, 5);
+        assert_eq!(result, OrderedFloat::from(5.0));
     }
 
     #[test]
     fn test_rhs_term() {
         let mut env = Environment::empty();
-        env.assign(&Variable::new("A"), Value::num(1));
-        env.assign(&Variable::new("B"), Value::num(2));
+        env.assign(&Variable::new("A"), Value::num(1.0));
+        env.assign(&Variable::new("B"), Value::num(2.0));
 
         let equiv = Equivalence::new();
 
-        let term = RHSTerm::Num(42);
+        let term = RHSTerm::Num(OrderedFloat::from(42.0));
         let value = term.evaluate(&env, &equiv).unwrap();
-        assert_eq!(value, Value::num(42));
+        assert_eq!(value, Value::num(OrderedFloat::from(42.0)));
 
-        let term = RHSTerm::Expr(Expression::binary(10, 5, ArithmeticOp::Add));
+        let term = RHSTerm::Expr(Expression::binary(
+            OrderedFloat::from(10.0),
+            OrderedFloat::from(5.0),
+            ArithmeticOp::Add,
+        ));
         let value = term.evaluate(&env, &equiv).unwrap();
-        assert_eq!(value, Value::num(15));
+        assert_eq!(value, Value::num(OrderedFloat::from(15.0)));
 
         let symbol = Symbol::new("func", var_vec!["A", "B"], vec![]);
         let term = RHSTerm::Sym(symbol);
         let value = term.evaluate(&env, &equiv).unwrap();
         assert_eq!(
             value,
-            Value::ground("func", vec![Value::num(1), Value::num(2)])
+            Value::ground(
+                "func",
+                vec![
+                    Value::num(OrderedFloat::from(1)),
+                    Value::num(OrderedFloat::from(2))
+                ]
+            )
         );
     }
 
     #[test]
-    fn test_clause() {
+    fn test_crisp_clause() {
         let clause = Clause {
             head: Symbol::new("my_clause", var_vec!["X", "Y"], var_vec!["Z"]),
             body: Goal::Bool(true),
+            truth_value: None,
         };
 
         assert_eq!(clause.arity(), 2);
@@ -766,16 +851,19 @@ mod tests {
         let clause1 = Clause {
             head: Symbol::new("clause", var_vec!["A"], vec![]),
             body: Goal::Bool(true),
+            truth_value: None,
         };
 
         let clause2 = Clause {
             head: Symbol::new("clause", var_vec!["A", "B"], vec![]),
             body: Goal::Bool(false),
+            truth_value: None,
         };
 
         let clause3 = Clause {
             head: Symbol::new("clause", var_vec!["X"], vec![]),
             body: Goal::Bool(true),
+            truth_value: None,
         };
 
         let db = ClauseDatabase::new(vec![clause1.clone(), clause2.clone(), clause3.clone()]);
@@ -824,18 +912,23 @@ mod tests {
         let x = pgen.new_placeholder();
         let y = pgen.new_placeholder();
 
-        equiv.unify(&x, &Value::Number(42)).unwrap();
+        equiv
+            .unify(&x, &Value::Number(OrderedFloat::from(42.0)))
+            .unwrap();
         equiv.unify(&y, &x).unwrap();
 
-        assert_eq!(equiv.set_representative(&y).unwrap(), Value::Number(42));
+        assert_eq!(
+            equiv.set_representative(&y).unwrap(),
+            Value::Number(OrderedFloat::from(42.0))
+        );
     }
 
     #[test]
     fn test_unification_fails() {
         let mut equiv = Equivalence::new();
 
-        let x = Value::Number(5);
-        let y = Value::Number(10);
+        let x = Value::Number(OrderedFloat::from(5.0));
+        let y = Value::Number(OrderedFloat::from(10.0));
 
         assert!(equiv.unify(&x, &y).is_err());
     }

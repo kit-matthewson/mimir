@@ -9,5 +9,6 @@ default-features = false
 features = ["precommit-hook", "run-cargo-test", "run-cargo-clippy"]
 
 [dependencies]
-nom = "8.0.0"
-thiserror = "2.0.17"
+nom = "8.0"
+thiserror = "2.0"
+ordered-float = "5.1"

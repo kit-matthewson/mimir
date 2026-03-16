@@ -12,6 +12,7 @@ use nom::{
     Parser, branch::*, bytes::complete::*, character::complete::*, combinator::*, multi::*,
     sequence::*,
 };
+use ordered_float::OrderedFloat;
 
 /// Parses an entire Mini-Prolog program consisting of multiple clauses.
 ///
@@ -39,22 +40,25 @@ where
 
 /// Parses a single number.
 ///
-/// Numbers can be positive or negative integers, and can contain underscores as digit separators.
-/// Numbers must fit within the range of i64.
-fn number(input: &str) -> nom::IResult<&str, i64> {
-    let (input, sign) = opt(alt((tag("-"), tag("+")))).parse(input)?;
-    // Use recognize to capture the full digit string instead of parsing to a vector of &str
-    let (input, digits) = recognize(separated_list1(tag("_"), digit1)).parse(input)?;
-
-    let mut number: i64 = digits.replace("_", "").parse().unwrap();
-
-    if let Some(s) = sign
-        && s == "-"
-    {
-        number = -number;
+/// Numbers can be positive or negative float, and can contain underscores as digit separators.
+/// Numbers must fit within the range of f64.
+fn number(input: &str) -> nom::IResult<&str, OrderedFloat<f64>> {
+    fn digits_with_separators(input: &str) -> nom::IResult<&str, &str> {
+        recognize(pair(digit1, many0(preceded(tag("_"), digit1)))).parse(input)
     }
 
-    Ok((input, number))
+    let (input, number_str) = recognize((
+        opt(alt((tag("-"), tag("+")))),
+        digits_with_separators,
+        opt(preceded(tag("."), digits_with_separators)),
+    ))
+    .parse(input)?;
+
+    let number = number_str.replace("_", "").parse::<f64>().map_err(|_| {
+        nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Float))
+    })?;
+
+    Ok((input, OrderedFloat::from(number)))
 }
 
 /// Types which can be parsed.
@@ -385,10 +389,13 @@ mod tests {
     #[test]
     fn test_number_parsing() {
         let cases = vec![
-            ("123", 123),
-            ("-456", -456),
-            ("1_000_000", 1_000_000),
-            ("+42", 42),
+            ("123", OrderedFloat::from(123.0)),
+            ("-456", OrderedFloat::from(-456.0)),
+            ("1_000_000", OrderedFloat::from(1_000_000.0)),
+            ("+42", OrderedFloat::from(42.0)),
+            ("3.14", OrderedFloat::from(3.14)),
+            ("-0.001", OrderedFloat::from(-0.001)),
+            ("1_000.000_001", OrderedFloat::from(1_000.000_001)),
         ];
 
         for (input, expected) in cases {
@@ -399,7 +406,7 @@ mod tests {
 
     #[test]
     fn test_number_parsing_invalid() {
-        let cases = vec!["abc", "12a34", "--123", "1__000"];
+        let cases = vec!["abc", "12a34", "--123", "1__000", "1.2.3"];
 
         for input in cases {
             let result = number(input);
@@ -443,7 +450,7 @@ mod tests {
                 "X = 5",
                 ast::Goal::Assign(
                     ast::Variable::Var("X".to_string()),
-                    ast::RHS::Expr(ast::ArithExpr::Num(5)),
+                    ast::RHS::Expr(ast::ArithExpr::Num(OrderedFloat::from(5.0))),
                 ),
             ),
             (
@@ -454,7 +461,7 @@ mod tests {
                         params: vec![ast::Term::Var(ast::Variable::Var("Y".to_string()))],
                     }),
                     ast::RelationalOp::GreaterThan,
-                    ast::Term::Num(18),
+                    ast::Term::Num(OrderedFloat::from(18.0)),
                 ),
             ),
             (
@@ -486,7 +493,7 @@ mod tests {
                     name: "atom".to_string(),
                 }),
             ),
-            ("12345", ast::Term::Num(12345)),
+            ("12345", ast::Term::Num(OrderedFloat::from(12345.0))),
             ("X", ast::Term::Var(ast::Variable::Var("X".to_string()))),
             (
                 "parent(john, X)",
@@ -561,10 +568,20 @@ mod tests {
         let cases = vec![
             (
                 "[1, 2, 3]",
-                vec![ast::Term::Num(1), ast::Term::Num(2), ast::Term::Num(3)],
+                vec![
+                    ast::Term::Num(OrderedFloat::from(1.0)),
+                    ast::Term::Num(OrderedFloat::from(2.0)),
+                    ast::Term::Num(OrderedFloat::from(3.0)),
+                ],
             ),
-            ("[1, 2]", vec![ast::Term::Num(1), ast::Term::Num(2)]),
-            ("[1]", vec![ast::Term::Num(1)]),
+            (
+                "[1, 2]",
+                vec![
+                    ast::Term::Num(OrderedFloat::from(1.0)),
+                    ast::Term::Num(OrderedFloat::from(2.0)),
+                ],
+            ),
+            ("[1]", vec![ast::Term::Num(OrderedFloat::from(1.0))]),
             ("[]", vec![]),
             (
                 "[H | T]",
@@ -576,8 +593,8 @@ mod tests {
             (
                 "[1, 2, [A, B]]",
                 vec![
-                    ast::Term::Num(1),
-                    ast::Term::Num(2),
+                    ast::Term::Num(OrderedFloat::from(1.0)),
+                    ast::Term::Num(OrderedFloat::from(2.0)),
                     ast::Term::List(vec![
                         ast::Term::Var(ast::Variable::Var("A".to_string())),
                         ast::Term::Var(ast::Variable::Var("B".to_string())),
@@ -652,7 +669,7 @@ mod tests {
                 ast::RHS::Expr(ast::ArithExpr::Expr(
                     Box::new(ast::ArithExpr::Var(ast::Variable::Var("X".to_string()))),
                     ast::ArithOp::Add,
-                    Box::new(ast::ArithExpr::Num(5)),
+                    Box::new(ast::ArithExpr::Num(OrderedFloat::from(5.0))),
                 )),
             ),
             (
@@ -682,13 +699,13 @@ mod tests {
                 "X",
                 ast::ArithExpr::Var(ast::Variable::Var("X".to_string())),
             ),
-            ("42", ast::ArithExpr::Num(42)),
+            ("42", ast::ArithExpr::Num(OrderedFloat::from(42.0))),
             (
                 "X + 5",
                 ast::ArithExpr::Expr(
                     Box::new(ast::ArithExpr::Var(ast::Variable::Var("X".to_string()))),
                     ast::ArithOp::Add,
-                    Box::new(ast::ArithExpr::Num(5)),
+                    Box::new(ast::ArithExpr::Num(OrderedFloat::from(5.0))),
                 ),
             ),
             (
@@ -697,7 +714,7 @@ mod tests {
                     Box::new(ast::ArithExpr::Expr(
                         Box::new(ast::ArithExpr::Var(ast::Variable::Var("X".to_string()))),
                         ast::ArithOp::Add,
-                        Box::new(ast::ArithExpr::Num(5)),
+                        Box::new(ast::ArithExpr::Num(OrderedFloat::from(5.0))),
                     )),
                     ast::ArithOp::Multiply,
                     Box::new(ast::ArithExpr::Var(ast::Variable::Var("Y".to_string()))),

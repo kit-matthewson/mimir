@@ -188,7 +188,7 @@ impl Engine {
         state.goal_stack.push(Goal::Restore(state.env.clone()));
 
         // Push choices for all but the first clause
-        // The first clause is handled directly so that we do not have not make an extra choice
+        // The first clause is handled directly so we do not have not make an extra choice
         for clause in clauses.iter().skip(1).rev() {
             let clause_env = Environment::for_symbol_with_params(
                 clause.head(),
@@ -227,6 +227,8 @@ impl Engine {
 
 #[cfg(test)]
 mod tests {
+    use ordered_float::OrderedFloat;
+
     use crate::{clause, var_vec};
 
     use super::*;
@@ -234,7 +236,7 @@ mod tests {
     #[test]
     fn test_engine_simple_query() {
         let program = vec![clause!(is_ten(T1) { T2 } :- Goal::Conjunction(
-            Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::Num(10))),
+            Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::Num(OrderedFloat::from(10.0)))),
             Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T2")))
         ))];
 
@@ -258,7 +260,7 @@ mod tests {
         }
 
         assert_eq!(results.len(), 1);
-        assert!(results.contains(&Value::Number(10)));
+        assert!(results.contains(&Value::Number(OrderedFloat::from(10.0))));
 
         // Query: is_ten(5)
         let query_fail = Query {
@@ -268,7 +270,10 @@ mod tests {
                     functor: "is_ten".to_string(),
                     params: var_vec!["X"],
                 }),
-                Box::new(Goal::Assign(Variable::new("X"), RHSTerm::Num(5))),
+                Box::new(Goal::Assign(
+                    Variable::new("X"),
+                    RHSTerm::Num(OrderedFloat::from(5.0)),
+                )),
             ),
         };
 

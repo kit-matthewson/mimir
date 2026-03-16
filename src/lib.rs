@@ -39,7 +39,7 @@ macro_rules! var_vec {
 ///
 /// let is_ten = clause!(
 ///     is_ten(T1) { T2 } :- Goal::Conjunction(
-///         Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::Num(10))),
+///         Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::num(10))),
 ///         Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T2")))
 ///     )
 /// );

@@ -3,8 +3,10 @@
 //! Defines the core data structures used to represent Mini-Prolog terms and clauses.
 //! Being the Mini-Prolog syntax, it does not support full Prolog features like lists.
 
+use ordered_float::OrderedFloat;
+
 /// The type to use for numbers.
-type Number = i64;
+type Number = OrderedFloat<f64>;
 
 /// A Mini-Prolog clause.
 ///
@@ -66,7 +68,7 @@ impl std::fmt::Display for Goal {
 pub enum Term {
     /// An atom.
     Atom(Atom),
-    /// A constant integer.
+    /// A constant number.
     Num(Number),
     /// A variable, starting with an uppercase letter.
     Var(Variable),
