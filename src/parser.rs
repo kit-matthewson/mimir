@@ -393,7 +393,7 @@ mod tests {
             ("-456", OrderedFloat::from(-456.0)),
             ("1_000_000", OrderedFloat::from(1_000_000.0)),
             ("+42", OrderedFloat::from(42.0)),
-            ("3.14", OrderedFloat::from(3.14)),
+            ("8.14", OrderedFloat::from(8.14)),
             ("-0.001", OrderedFloat::from(-0.001)),
             ("1_000.000_001", OrderedFloat::from(1_000.000_001)),
         ];
