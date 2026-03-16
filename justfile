@@ -10,7 +10,7 @@ check:
 	cargo check
 	cargo fmt --check
 	cargo clippy --all-targets --all-features -- -D warnings
-	cargo test
+	cargo test -q
 
 make-pdfs:
 	typst c report/main.typ "Final Report.pdf"
