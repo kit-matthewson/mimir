@@ -253,6 +253,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_restore_choice() {
+        let mut state = State {
+            env: Environment::empty(),
+            equiv: Equivalence::new(),
+            goal_stack: vec![Goal::Check {
+                functor: "some_goal".to_string(),
+                params: var_vec!["X"],
+            }],
+            choice_stack: Vec::new(),
+            truth_value: 1.0,
+            placeholder_gen: PlaceholderGenerator::new(),
+        };
+
+        let choice = Choice::new(
+            Goal::Assign(Variable::new("X"), RHSTerm::Num(OrderedFloat::from(10.0))),
+            Environment::empty(),
+            Equivalence::new(),
+            1.0,
+            vec![Goal::Check {
+                functor: "some_goal".to_string(),
+                params: var_vec!["X"],
+            }],
+        );
+
+        state.restore_choice(choice);
+
+        assert_eq!(state.goal_stack.len(), 2);
+        assert!(matches!(state.goal_stack[0], Goal::Check { .. }));
+        assert!(matches!(state.goal_stack[1], Goal::Assign(_, _)));
+    }
+
+    #[test]
     fn test_engine_simple_query() {
         let program = vec![clause!(is_ten(T1) { T2 } :- Goal::Conjunction(
             Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::Num(OrderedFloat::from(10.0)))),
@@ -299,5 +331,271 @@ mod tests {
         // The engine currently returns an error if terms cannot be unified
         let solutions = engine.execute(query_fail.clone());
         assert!(solutions.is_err());
+    }
+
+    #[test]
+    fn test_engine_disjunction() {
+        // Program:
+        // is_ten_or_five(T1) { T2, T3 } :-
+        //     (T2 = 10, T1 = T2) ;
+        //     (T3 = 5, T1 = T3).
+        let program = vec![clause!(is_ten_or_five(T1) { T2, T3 } :- Goal::Disjunction(
+        Box::new(Goal::Conjunction(
+            Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::Num(OrderedFloat::from(10.0)))),
+            Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T2")))
+        )),
+        Box::new(Goal::Conjunction(
+            Box::new(Goal::Assign(Variable::new("T3"), RHSTerm::Num(OrderedFloat::from(5.0)))),
+            Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T3")))
+        ))))];
+
+        let engine = Engine::new(program, 0.01);
+
+        // Query: is_ten_or_five(X)
+        let query = Query {
+            local_vars: var_vec!["X"],
+            goal: Goal::Check {
+                functor: "is_ten_or_five".to_string(),
+                params: var_vec!["X"],
+            },
+        };
+
+        let solutions = engine.execute(query.clone()).unwrap();
+
+        let mut results = vec![];
+        for (env, equiv) in solutions.iter() {
+            let value = env.get(&Variable::new("X"), equiv).unwrap();
+            results.push(value);
+        }
+
+        assert_eq!(results.len(), 2);
+        assert!(results.contains(&Value::Number(OrderedFloat::from(10.0))));
+        assert!(results.contains(&Value::Number(OrderedFloat::from(5.0))));
+    }
+
+    #[test]
+    fn test_equivalence_goals() {
+        let mut pgen = PlaceholderGenerator::new();
+
+        let mut env = Environment::empty();
+        env.assign(&Variable::new("X"), Value::num(10));
+        env.assign(&Variable::new("Y"), Value::num(10));
+        env.assign(&Variable::new("Z"), pgen.new_placeholder());
+
+        let engine = Engine::new(vec![], 0.01);
+
+        let mut state = State {
+            env,
+            equiv: Equivalence::new(),
+            goal_stack: Vec::new(),
+            choice_stack: Vec::new(),
+            truth_value: 1.0,
+            placeholder_gen: PlaceholderGenerator::new(),
+        };
+
+        // 10 = 10
+        let result = engine.handle_goal(
+            Goal::Equivalence(Variable::new("X"), Variable::new("Y")),
+            &mut state,
+        );
+        assert!(result.is_ok());
+        assert_eq!(state.goal_stack.len(), 0);
+
+        // Placeholder should unify with 10
+        let result = engine.handle_goal(
+            Goal::Equivalence(Variable::new("Z"), Variable::new("X")),
+            &mut state,
+        );
+        assert!(result.is_ok());
+        assert_eq!(state.goal_stack.len(), 0);
+    }
+
+    #[test]
+    fn test_invalid_equivalence_goals() {
+        // Setup environment with X and Y
+        let mut env = Environment::empty();
+        env.assign(&Variable::new("X"), Value::num(10));
+        env.assign(&Variable::new("Y"), Value::num(5));
+
+        let engine = Engine::new(vec![], 0.01);
+
+        let mut state = State {
+            env,
+            equiv: Equivalence::new(),
+            goal_stack: Vec::new(),
+            choice_stack: Vec::new(),
+            truth_value: 1.0,
+            placeholder_gen: PlaceholderGenerator::new(),
+        };
+
+        // 5 cannot equal 10
+        let result = engine.handle_goal(
+            Goal::Equivalence(Variable::new("X"), Variable::new("Y")),
+            &mut state,
+        );
+        println!("{:?}", result);
+        assert!(result.is_ok());
+        assert_eq!(state.goal_stack.len(), 1);
+        assert!(matches!(state.goal_stack[0], Goal::TruthValue(0.0)));
+
+        // Variable Z does not exist in the environment
+        let result = engine.handle_goal(
+            Goal::Equivalence(Variable::new("Z"), Variable::new("X")),
+            &mut state,
+        );
+        assert!(result.is_err());
+
+        let result = engine.handle_goal(
+            Goal::Equivalence(Variable::new("X"), Variable::new("Z")),
+            &mut state,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_truth_expr_eval() {
+        // Setup environment with X = 0.1 and Y = 0.3
+        let mut env = Environment::empty();
+        env.assign(&Variable::new("X"), Value::num(0.1));
+        env.assign(&Variable::new("Y"), Value::num(0.3));
+
+        let engine = Engine::new(vec![], 0.01);
+        let mut state = State {
+            env,
+            equiv: Equivalence::new(),
+            goal_stack: Vec::new(),
+            choice_stack: Vec::new(),
+            truth_value: 1.0,
+            placeholder_gen: PlaceholderGenerator::new(),
+        };
+
+        // Evaluate the truth value expression
+        // Set X=0.3 and Y=0.1
+
+        let result = engine.handle_goal(
+            Goal::TruthValueExpr(Expression::Expr(
+                Box::new(Expression::variable("X")),
+                Box::new(Expression::variable("Y")),
+                ArithmeticOp::Add,
+            )),
+            &mut state,
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(state.goal_stack.len(), 1);
+        assert!(
+            matches!(state.goal_stack[0], Goal::TruthValue(t) if (t - 0.4).abs() < f64::EPSILON)
+        );
+    }
+
+    #[test]
+    fn test_handle_relation() {
+        let mut env = Environment::empty();
+        env.assign(&Variable::new("X"), Value::num(10));
+        env.assign(&Variable::new("Y"), Value::num(5));
+
+        let engine = Engine::new(vec![], 0.01);
+
+        let mut state = State {
+            env,
+            equiv: Equivalence::new(),
+            goal_stack: Vec::new(),
+            choice_stack: Vec::new(),
+            truth_value: 1.0,
+            placeholder_gen: PlaceholderGenerator::new(),
+        };
+
+        // Test X > Y
+        let result = engine.handle_relation(
+            &mut state,
+            Variable::new("X"),
+            Variable::new("Y"),
+            RelationalOp::GreaterThan,
+        );
+        assert!(result.is_ok());
+        assert_eq!(state.goal_stack.len(), 0);
+        assert!((state.truth_value - 1.0).abs() < f64::EPSILON);
+
+        // Test X < Y
+        let result = engine.handle_relation(
+            &mut state,
+            Variable::new("X"),
+            Variable::new("Y"),
+            RelationalOp::LessThan,
+        );
+        assert!(result.is_ok());
+        assert_eq!(state.goal_stack.len(), 1);
+        assert!(matches!(state.goal_stack[0], Goal::TruthValue(0.0)));
+    }
+
+    #[test]
+    fn test_handle_relation_nan() {
+        let mut pgen = PlaceholderGenerator::new();
+
+        let mut env = Environment::empty();
+        env.assign(&Variable::new("X"), Value::num(10));
+        env.assign(&Variable::new("Y"), pgen.new_placeholder());
+
+        let engine = Engine::new(vec![], 0.01);
+
+        let mut state = State {
+            env,
+            equiv: Equivalence::new(),
+            goal_stack: Vec::new(),
+            choice_stack: Vec::new(),
+            truth_value: 1.0,
+            placeholder_gen: PlaceholderGenerator::new(),
+        };
+
+        // X > Y and Y > X
+        let result = engine.handle_relation(
+            &mut state,
+            Variable::new("X"),
+            Variable::new("Y"),
+            RelationalOp::GreaterThan,
+        );
+        assert!(result.is_err());
+
+        let result = engine.handle_relation(
+            &mut state,
+            Variable::new("Y"),
+            Variable::new("X"),
+            RelationalOp::GreaterThan,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_handle_check() {
+        let program = vec![
+            clause!(clause(X) { Y } :- Goal::Equivalence(Variable::new("X"), Variable::new("Y"))),
+            clause!(clause(X) {Y} :- Goal::Relation(Variable::new("X"), Variable::new("Y"), RelationalOp::GreaterThan)),
+        ];
+
+        let mut env = Environment::empty();
+        env.assign(&Variable::new("X"), Value::num(10));
+        env.assign(&Variable::new("Y"), Value::num(5));
+
+        let engine = Engine::new(program, 0.01);
+
+        let mut state = State {
+            env,
+            equiv: Equivalence::new(),
+            goal_stack: Vec::new(),
+            choice_stack: Vec::new(),
+            truth_value: 1.0,
+            placeholder_gen: PlaceholderGenerator::new(),
+        };
+
+        let result = engine.handle_check(&mut state, "clause".to_string(), var_vec!["X"]);
+        println!("{:?}", result);
+        assert!(result.is_ok());
+        assert_eq!(state.choice_stack.len(), 1);
+        assert_eq!(state.goal_stack.len(), 2);
+        assert!(matches!(state.goal_stack[1], Goal::Equivalence(_, _)));
+
+        // Should fail if we ask for the wrong arity
+        let result = engine.handle_check(&mut state, "clause".to_string(), var_vec!["X", "Y"]);
+        assert!(result.is_err());
     }
 }

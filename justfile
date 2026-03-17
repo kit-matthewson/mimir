@@ -12,6 +12,10 @@ check:
 	cargo clippy --all-targets --all-features -- -D warnings
 	cargo test -q
 
+coverage-html:
+	cargo +nightly llvm-cov clean --workspace
+	cargo +nightly llvm-cov --workspace --all-features --lib --tests --html --output-dir target/llvm-cov
+
 make-pdfs:
 	typst c report/main.typ "Final Report.pdf"
 	typst c report/logbook.typ "Logbook.pdf"
