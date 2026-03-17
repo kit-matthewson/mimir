@@ -13,6 +13,8 @@ pub use state::*;
 /// An execution engine.
 pub struct Engine {
     db: ClauseDatabase,
+    /// Truth values below this threshold are considered false
+    truth_threshold: f64,
 }
 
 /// The current state of the engine during execution.
@@ -25,6 +27,7 @@ struct State {
     equiv: Equivalence,
     goal_stack: Vec<Goal>,
     choice_stack: Vec<Choice>,
+    truth_value: f64,
     placeholder_gen: PlaceholderGenerator,
 }
 
@@ -39,10 +42,13 @@ impl State {
 
 impl Engine {
     /// Create a new engine from a given program. Initialises the clause database.
-    pub fn new(program: Vec<Clause>) -> Self {
+    pub fn new(program: Vec<Clause>, truth_threshold: f64) -> Self {
         let db = ClauseDatabase::new(program);
 
-        Engine { db }
+        Engine {
+            db,
+            truth_threshold,
+        }
     }
 
     /// Execute the engine on the given query.
@@ -54,6 +60,7 @@ impl Engine {
             equiv: Equivalence::new(),
             goal_stack: vec![query.goal],
             choice_stack: Vec::new(),
+            truth_value: 1.0,
             placeholder_gen,
         };
 
@@ -71,7 +78,7 @@ impl Engine {
                     solutions.push((state.env.clone(), state.equiv.clone()));
 
                     // We might be able to find another assignment
-                    state.goal_stack.push(Goal::Bool(false));
+                    state.goal_stack.push(Goal::TruthValue(0.0));
                 }
             }
         }
@@ -91,6 +98,7 @@ impl Engine {
                     *goal2,
                     state.env.clone(),
                     state.equiv.clone(),
+                    state.truth_value,
                     state.goal_stack.clone(),
                 );
 
@@ -103,7 +111,7 @@ impl Engine {
                 let val2 = state.env.get(&var2, &state.equiv)?;
 
                 if state.equiv.unify(&val1, &val2).is_err() {
-                    state.goal_stack.push(Goal::Bool(false));
+                    state.goal_stack.push(Goal::TruthValue(0.0));
                 }
             }
 
@@ -123,13 +131,23 @@ impl Engine {
                 state.equiv.unify(&val1, &val2)?;
             }
 
-            Goal::Bool(true) => (),
-            Goal::Bool(false) => {
-                if let Some(choice) = state.choice_stack.pop() {
-                    state.restore_choice(choice);
-                } else {
-                    state.env.clear();
-                    state.goal_stack.clear();
+            Goal::TruthValueExpr(expr) => {
+                let val = expr.evaluate(&state.env, &state.equiv)?;
+                state.goal_stack.push(Goal::TruthValue(*val));
+            }
+
+            Goal::TruthValue(t) => {
+                // Update the current truth value
+                state.truth_value = state.truth_value.min(t);
+
+                if state.truth_value < self.truth_threshold {
+                    // Backtrack if there are choices available, otherwise clear the environment and goal stack to terminate
+                    if let Some(choice) = state.choice_stack.pop() {
+                        state.restore_choice(choice);
+                    } else {
+                        state.env.clear();
+                        state.goal_stack.clear();
+                    }
                 }
             }
         }
@@ -166,7 +184,7 @@ impl Engine {
 
         // If the relation is false, push a failure goal
         if !result {
-            state.goal_stack.push(Goal::Bool(false));
+            state.goal_stack.push(Goal::TruthValue(0.0));
         }
 
         Ok(())
@@ -202,6 +220,7 @@ impl Engine {
                 clause.body().clone(),
                 clause_env,
                 state.equiv.clone(),
+                state.truth_value,
                 state.goal_stack.clone(),
             );
 
@@ -240,7 +259,7 @@ mod tests {
             Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T2")))
         ))];
 
-        let engine = Engine::new(program);
+        let engine = Engine::new(program, 0.01);
 
         // Query: is_ten(X)
         let query = Query {

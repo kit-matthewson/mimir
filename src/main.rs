@@ -60,7 +60,7 @@ fn execute(program: &str, query: Query) -> Result<(), mimir::error::MimirError> 
     //     // println!("{}", clause);
     // }
 
-    let engine = mimir::engine::Engine::new(program);
+    let engine = mimir::engine::Engine::new(program, 0.01);
     let solutions = engine.execute(query.clone())?;
 
     println!("{}", query);
@@ -102,7 +102,7 @@ mod tests {
             },
         };
 
-        let engine = mimir::engine::Engine::new(vec![program]);
+        let engine = mimir::engine::Engine::new(vec![program], 0.01);
         let solutions = engine.execute(query).unwrap();
 
         assert_eq!(solutions.len(), 1);
@@ -134,7 +134,7 @@ mod tests {
             ),
         };
 
-        let engine = mimir::engine::Engine::new(vec![program]);
+        let engine = mimir::engine::Engine::new(vec![program], 0.01);
         let solutions = engine.execute(query).unwrap();
 
         assert_eq!(solutions.len(), 1);

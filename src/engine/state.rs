@@ -31,8 +31,10 @@ pub enum Goal {
     Relation(Variable, Variable, RelationalOp),
     /// Make a variable equivilant to some term.
     Assign(Variable, RHSTerm),
-    /// A boolean goal: true always succeeds, false always fails.
-    Bool(bool),
+    /// An expression that evaluates to a truth value.
+    TruthValueExpr(Expression),
+    /// A fuzzy truth value: 1 for true, 0 for false.
+    TruthValue(f64),
 }
 
 impl std::fmt::Display for Goal {
@@ -62,7 +64,8 @@ impl std::fmt::Display for Goal {
                 write!(f, "{} {} {}", v1, op_str, v2)
             }
             Goal::Assign(var, term) => write!(f, "{} := {:?}", var, term),
-            Goal::Bool(b) => write!(f, "{}", b),
+            Goal::TruthValue(t) => write!(f, "{}", t),
+            Goal::TruthValueExpr(expr) => write!(f, "truth: {:?}", expr),
         }
     }
 }
@@ -78,17 +81,26 @@ pub struct Choice {
     pub env: Environment,
     /// The equivalence when the choice was made.
     pub equiv: Equivalence,
+    /// The truth value when the choice was made.
+    pub truth_value: f64,
     /// The goal stack when the choice was made.
     pub goal_stack: Vec<Goal>,
 }
 
 impl Choice {
     /// Create a new choice when a decision has been made.
-    pub fn new(goal: Goal, env: Environment, equiv: Equivalence, goal_stack: Vec<Goal>) -> Self {
+    pub fn new(
+        goal: Goal,
+        env: Environment,
+        equiv: Equivalence,
+        truth_value: f64,
+        goal_stack: Vec<Goal>,
+    ) -> Self {
         Choice {
             goal,
             env,
             equiv,
+            truth_value,
             goal_stack,
         }
     }
@@ -359,16 +371,24 @@ mod tests {
 
     #[test]
     fn test_choice_creation() {
-        let goal = Goal::Bool(true);
+        let goal = Goal::TruthValue(1.0);
         let env = Environment::empty();
         let equiv = Equivalence::new();
-        let goal_stack = vec![Goal::Bool(false)];
+        let truth_value = 1.0;
+        let goal_stack = vec![Goal::TruthValue(0.0)];
 
-        let choice = Choice::new(goal.clone(), env.clone(), equiv.clone(), goal_stack.clone());
+        let choice = Choice::new(
+            goal.clone(),
+            env.clone(),
+            equiv.clone(),
+            truth_value,
+            goal_stack.clone(),
+        );
 
         assert_eq!(choice.goal, goal);
         assert_eq!(choice.env, env);
         assert_eq!(choice.equiv.equiv, equiv.equiv);
+        assert_eq!(choice.truth_value, truth_value);
         assert_eq!(choice.goal_stack, goal_stack);
     }
 
@@ -430,7 +450,7 @@ mod tests {
         // Test environment for query
         let query = Query {
             local_vars: vec![Variable::new("A"), Variable::new("B")],
-            goal: Goal::Bool(true),
+            goal: Goal::TruthValue(1.0),
         };
 
         let env = Environment::for_query(&query, &mut pgen);
@@ -467,17 +487,17 @@ mod tests {
     fn test_clause_db() {
         let clause1_a = Clause::new(
             Symbol::new("clause1", var_vec!["X"], vec![]),
-            Goal::Bool(true),
+            Goal::TruthValue(1.0),
         );
 
         let clause1_b = Clause::new(
             Symbol::new("clause1", var_vec!["Y"], vec![]),
-            Goal::Bool(false),
+            Goal::TruthValue(0.0),
         );
 
         let clause2 = Clause::new(
             Symbol::new("clause2", var_vec!["Z"], vec![]),
-            Goal::Bool(true),
+            Goal::TruthValue(1.0),
         );
 
         let program = vec![clause1_a.clone(), clause1_b.clone(), clause2.clone()];

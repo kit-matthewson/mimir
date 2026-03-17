@@ -33,7 +33,7 @@ pub fn translate(clause: ast::Clause) -> Result<engine::Clause, TranslationError
         .into_iter()
         .chain(std::iter::once(body_goals))
         .map(Box::new)
-        .fold(engine::Goal::Bool(true), |acc, goal| {
+        .fold(engine::Goal::TruthValue(1.0), |acc, goal| {
             engine::Goal::Conjunction(goal, Box::new(acc))
         });
 
@@ -109,7 +109,7 @@ fn translate_clause_body(
     state: &mut TranslationState,
 ) -> Result<engine::Goal, TranslationError> {
     if body.is_empty() {
-        return Ok(engine::Goal::Bool(true));
+        return Ok(engine::Goal::TruthValue(1.0));
     }
 
     // Convert each goal and combine with conjunction
@@ -920,8 +920,8 @@ mod tests {
             engine::Goal::Conjunction(left, right) => {
                 // Left should be Bool(true) from the body
                 match left.as_ref() {
-                    engine::Goal::Bool(true) => {}
-                    _ => panic!("Expected Bool(true) on left"),
+                    engine::Goal::TruthValue(1.0) => {}
+                    _ => panic!("Expected TruthValue(1.0) on left"),
                 }
                 // Right should contain the unification goals
                 match right.as_ref() {
@@ -941,8 +941,8 @@ mod tests {
                         }
                         // The innermost right should be Bool(true)
                         match unif_right.as_ref() {
-                            engine::Goal::Bool(true) => {}
-                            _ => panic!("Expected Bool(true) innermost"),
+                            engine::Goal::TruthValue(1.0) => {}
+                            _ => panic!("Expected TruthValue(1.0) innermost"),
                         }
                     }
                     _ => panic!("Expected a nested Conjunction"),
@@ -989,7 +989,7 @@ mod tests {
                         }
                         current = right_inner.as_ref();
                     }
-                    engine::Goal::Bool(true) => break,
+                    engine::Goal::TruthValue(1.0) => break,
                     engine::Goal::Assign(_, _) => {
                         goal_count += 1;
                         break;

@@ -206,10 +206,10 @@ impl ArithmeticOp {
 /// # use mimir::engine::{Expression, ArithmeticOp, Variable, Environment, Equivalence};
 /// // 10 + (5 * 2)
 /// let expr = Expression::binary(
-///     Expression::number(10),
+///     Expression::num(10),
 ///     Expression::binary(
-///         Expression::number(5),
-///         Expression::number(2),
+///         Expression::num(5),
+///         Expression::num(2),
 ///         ArithmeticOp::Multiply,
 ///     ),
 ///     ArithmeticOp::Add,
@@ -257,7 +257,7 @@ impl Expression {
     }
 
     /// Create a number expression.
-    pub fn number<T: Into<Number>>(n: T) -> Self {
+    pub fn num<T: Into<Number>>(n: T) -> Self {
         Expression::Num(n.into())
     }
 
@@ -451,8 +451,6 @@ pub struct Clause {
     head: Symbol,
     /// The body goal of the clause.
     body: Goal,
-    /// If the clause is fuzzy, it will have a truth value expression. If not, this is `None`.
-    truth_value: Option<Expression>,
 }
 
 impl Clause {
@@ -460,25 +458,24 @@ impl Clause {
     ///
     /// # Example
     /// ```
-    /// # use mimir::engine::{Clause, Goal, Variable, Symbol};
+    /// # use mimir::engine::{Clause, Goal, Variable, Symbol, Expression};
     /// # use mimir::var_vec;
     /// let clause = Clause::new(
     ///    Symbol::new("my_clause", var_vec!["X", "Y"], vec![]),
-    ///    Goal::Bool(true),
+    ///    Goal::TruthValue(1.0),
     /// );
     /// assert_eq!(clause.head().functor(), "my_clause");
     /// assert_eq!(clause.arity(), 2);
-    /// assert_eq!(clause.body(), &Goal::Bool(true));
+    /// assert_eq!(clause.body(), &Goal::TruthValue(1.0));
+    /// assert_eq!(clause.truth_value(), Expression::num(1.0));
     /// ```
     pub fn new(head: Symbol, body: Goal) -> Self {
-        Clause {
-            head,
-            body,
-            truth_value: None,
-        }
+        Clause { head, body }
     }
 
     /// Create a new fuzzy clause.
+    ///
+    /// This is done by adding a `TruthValueExpr` goal to the body, which will be evaluated during execution to determine the truth value of this clause.
     ///
     /// # Example
     /// ```
@@ -486,20 +483,53 @@ impl Clause {
     /// # use mimir::var_vec;
     /// let clause = Clause::fuzzy(
     ///    Symbol::new("my_clause", var_vec!["X", "Y"], vec![]),
-    ///    Goal::Bool(true),
-    ///    Expression::number(0.8),
+    ///    Goal::Check { functor: "some_goal".to_string(), params: var_vec!["X"] },
+    ///    Expression::variable("Z"),
     /// );
     /// assert_eq!(clause.head().functor(), "my_clause");
     /// assert_eq!(clause.arity(), 2);
-    /// assert_eq!(clause.body(), &Goal::Bool(true));
-    /// assert_eq!(clause.truth_value(), &Some(Expression::number(0.8)));
+    /// assert_eq!(clause.body(), &Goal::Conjunction(
+    ///    Box::new(Goal::Check { functor: "some_goal".to_string(), params: var_vec!["X"] }),
+    ///    Box::new(Goal::TruthValueExpr(Expression::variable("Z"))),
+    /// ));
+    /// assert_eq!(clause.truth_value(), Expression::variable("Z"));
     /// ```
-    pub fn fuzzy(head: Symbol, body: Goal, truth_value: Expression) -> Self {
-        Clause {
-            head,
-            body,
-            truth_value: Some(truth_value),
-        }
+    pub fn fuzzy(head: Symbol, body: Goal, truth_value_expression: Expression) -> Self {
+        let body = Goal::Conjunction(
+            Box::new(body),
+            Box::new(Goal::TruthValueExpr(truth_value_expression.clone())),
+        );
+
+        // TODO: Check that the truth value expression only contains variables that are in the head of this clause.
+
+        Clause { head, body }
+    }
+
+    /// Create a new fuzzy clause with a fixed truth value.
+    ///
+    /// This is done by adding a `TruthValue` goal to the body, which will set the truth value of this clause to the provided value during execution.
+    ///
+    /// # Example
+    /// ```
+    /// # use mimir::engine::{Clause, Goal, Variable, Symbol, Expression};
+    /// # use mimir::var_vec;
+    /// let clause = Clause::fixed_fuzzy(
+    ///    Symbol::new("my_clause", var_vec!["X", "Y"], vec![]),
+    ///    Goal::Check { functor: "some_goal".to_string(), params: var_vec!["X"] },
+    ///    0.8,
+    /// );
+    /// assert_eq!(clause.head().functor(), "my_clause");
+    /// assert_eq!(clause.arity(), 2);
+    /// assert_eq!(clause.body(), &Goal::Conjunction(
+    ///     Box::new(Goal::Check { functor: "some_goal".to_string(), params: var_vec!["X"] }),
+    ///     Box::new(Goal::TruthValue(0.8))
+    /// ));
+    /// assert_eq!(clause.truth_value(), Expression::num(0.8));
+    /// ```
+    pub fn fixed_fuzzy(head: Symbol, body: Goal, truth_value: f64) -> Self {
+        let body = Goal::Conjunction(Box::new(body), Box::new(Goal::TruthValue(truth_value)));
+
+        Clause { head, body }
     }
 
     /// Gets the arity (number of parameters) of this clause.
@@ -513,9 +543,24 @@ impl Clause {
     }
 
     /// Gets the truth value expression of this clause, if it is fuzzy.
-    /// Returns `None` if this clause is crisp.
-    pub fn truth_value(&self) -> &Option<Expression> {
-        &self.truth_value
+    ///
+    /// This is found by looking for a `TruthValueExpr` goal in the body of the clause. If this is found, the clause is fuzzy and the expression is returned. If not, this clause is crisp and `None` is returned.
+    ///
+    /// Clauses containing multiple `TruthValueExpr` goals are not supported and have undefined behaviour.
+    pub fn truth_value(&self) -> Expression {
+        // Recursively search for a TruthValueExpr goal in the body of this clause
+        fn search_goal(goal: &Goal) -> Option<Expression> {
+            match goal {
+                Goal::TruthValueExpr(expr) => Some(expr.clone()),
+                Goal::TruthValue(n) => Some(Expression::Num(OrderedFloat::from(*n))),
+                Goal::Conjunction(g1, g2) | Goal::Disjunction(g1, g2) => {
+                    search_goal(g1).or_else(|| search_goal(g2))
+                }
+                _ => None,
+            }
+        }
+
+        search_goal(&self.body).unwrap_or(Expression::Num(OrderedFloat::from(1.0)))
     }
 
     /// Gets the head (symbol) of this clause.
@@ -601,14 +646,18 @@ mod tests {
     fn test_clause_macro() {
         let my_clause = clause!(
             my_clause(X, Y) { Z } :-
-            Goal::Bool(true)
+            Goal::TruthValue(1.0)
         );
 
         assert_eq!(my_clause.head().functor(), "my_clause");
         assert_eq!(my_clause.head().parameters(), &var_vec!["X", "Y"]);
         assert_eq!(my_clause.head().local_vars(), &var_vec!["Z"]);
         assert_eq!(my_clause.arity(), 2);
-        assert_eq!(my_clause.body(), &Goal::Bool(true));
+        assert_eq!(my_clause.body(), &Goal::TruthValue(1.0));
+        assert_eq!(
+            my_clause.truth_value(),
+            Expression::Num(OrderedFloat::from(1.0))
+        );
     }
 
     #[test]
@@ -811,8 +860,7 @@ mod tests {
     fn test_crisp_clause() {
         let clause = Clause {
             head: Symbol::new("my_clause", var_vec!["X", "Y"], var_vec!["Z"]),
-            body: Goal::Bool(true),
-            truth_value: None,
+            body: Goal::TruthValue(1.0),
         };
 
         assert_eq!(clause.arity(), 2);
@@ -850,20 +898,17 @@ mod tests {
     fn test_clause_database() {
         let clause1 = Clause {
             head: Symbol::new("clause", var_vec!["A"], vec![]),
-            body: Goal::Bool(true),
-            truth_value: None,
+            body: Goal::TruthValue(1.0),
         };
 
         let clause2 = Clause {
             head: Symbol::new("clause", var_vec!["A", "B"], vec![]),
-            body: Goal::Bool(false),
-            truth_value: None,
+            body: Goal::TruthValue(0.0),
         };
 
         let clause3 = Clause {
             head: Symbol::new("clause", var_vec!["X"], vec![]),
-            body: Goal::Bool(true),
-            truth_value: None,
+            body: Goal::TruthValue(1.0),
         };
 
         let db = ClauseDatabase::new(vec![clause1.clone(), clause2.clone(), clause3.clone()]);
