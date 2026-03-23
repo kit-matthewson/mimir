@@ -19,8 +19,8 @@
 #set list(marker: text(fill: exeter-light, sym.bullet))
 #set enum(numbering: "1.")
 
-#show raw: set block(fill: exeter-light.lighten(95%), inset: .5em, width: 100%, breakable: false)
-#show raw: set text(size: 0.9em)
+#show raw: set block(fill: exeter-light.lighten(95%), inset: .5em, width: 90%, breakable: false)
+#show raw: set text(size: 0.8em)
 
 #show figure.caption: set text(size: 0.9em, fill: exeter-dark)
 
@@ -49,34 +49,24 @@
   ]
 ]
 
-// - Font size #sym.checkmark
-// - Go into detail on engine implementation
-// - How will fuzzy logic be implemented in the engine
-// - Try to link to demo
-// - Emphasise originality, use keywords: 'original', 'new contribution'
-// - More bullets, less text
-
 = Introduction
-// Prolog is a logic programming language that allows the programmer to declare facts and rules, and then ask queries about them.
-
-// Rust is a modern systems programming language with emphasis on safety and performance.
-
-// Fuzzy logic is a form of many-valued logic that allows for reasoning about imprecise or uncertain information.
 This project explores the implementation of a simple Prolog interpreter in Rust. This is then extended to incorporate fuzzy logic.
 
-Prolog can be used in a range of applications, including artificial intelligence, natural language processing, and theorem proving @bratko_prolog_1990.
+// Prolog can be used in a range of applications, including artificial intelligence, natural language processing, and theorem proving @bratko_prolog_1990.
 
 == Motivation
-- Prolog is a powerful language for certain problems but can be hard to understand.
-- Implementing a Prolog interpreter would improve my understanding of the language.
+- Improve my understanding of the language.
+- Implement a simple, understandable Prolog interpreter.
+- Explore the integration of fuzzy logic into Prolog.
 
 == Aims
-- Produce a Rust implementation of a Prolog interpreter.
-- Support a subset of Prolog's features, including unification and backtracking.
-- Extend the implementation to support fuzzy logic.
+- Create Rust implementation of a Prolog interpreter.
+- Support a subset of Prolog's features.
+- Extend to support fuzzy logic.
 
-
-#figure(caption: [A Simple Prolog Program.])[
+#figure(
+  caption: [A simple Prolog program.],
+)[
   ```
   parent(john, mary).
   parent(mary, susan).
@@ -89,28 +79,47 @@ Prolog can be used in a range of applications, including artificial intelligence
   ```
 ]
 
-= Technical Background
-The design of the implementation is based on that given by Dewey and Hardekopf @dewey_mini.
+#v(1fr)
 
-It has three main components:
-- A parser that generates an abstract syntax tree (AST) from the user's program @aho_compilers_2002.
-- A translator that converts this user-facing AST into an internal representation.
-- The engine which executes queries using the internal representation.
+= Implementation
+== Crisp Prolog Engine
+Prolog implementation based on the design given by Dewey and Hardekopf @dewey_mini:
+- Parser that generates an abstract syntax tree (AST) from the user's program
+- Translator that converts this user-facing AST into an internal representation
+- Engine which executes queries using the internal representation
+
+The engine maintains the following state:
+- Environment stores variable bindings
+- Equivalence relation allows for unification of values
+- Stack of goals to be solved
+- Stack of choice points to allow for backtracking
+
+This is implemented in Rust, the first such implementation that I am aware of.
+
+#v(1fr)
+
+#figure(
+  caption: [Parts of the Japanese subway use fuzzy control systems @jet0_sendai_2008.],
+  placement: none,
+  image("assets/sendai_subway.jpg", width: 90%),
+)
+
+#v(1fr)
 
 #figure(
   caption: [Overview of the implementation design.],
-  placement: auto,
+  placement: top,
 )[
   #cetz.canvas({
     import cetz.draw: *
 
-    let size = 2.5
+    let size = 2.4
 
     circle((0, 0), radius: size, fill: exeter-light, stroke: none, name: "parser")
     content((0, 0), text(weight: "bold")[Parser])
 
     content(
-      (rel: (6, 4), update: false),
+      (rel: (8, 3), update: false),
       text(fill: black)[Input Program],
       frame: "rect",
       stroke: 2pt + exeter-light,
@@ -118,7 +127,7 @@ It has three main components:
       name: "input_program",
     )
     content(
-      (rel: (7, 1.3), update: false),
+      (rel: (8, 0.3), update: false),
       text(fill: black)[Query],
       frame: "rect",
       stroke: 2pt + exeter-light,
@@ -126,19 +135,19 @@ It has three main components:
       name: "query",
     )
 
-    let p = (3, 2)
+    let p = (4, 1)
 
     line("input_program", p, "parser", mark: (end: ">"), stroke: 2pt)
     line("query", p, stroke: 2pt)
 
-    circle((rel: (6, -8)), radius: size, fill: exeter-dark, stroke: none, name: "translator")
+    circle((rel: (6, -6)), radius: size, fill: exeter-dark, stroke: none, name: "translator")
     content((rel: (0, 0)), text(fill: white, weight: "bold")[Translator])
 
-    circle((rel: (-7, -7)), radius: size, fill: exeter-light, stroke: none, name: "engine")
+    circle((rel: (-10, -5)), radius: size, fill: exeter-light, stroke: none, name: "engine")
     content((rel: (0, 0)), text(weight: "bold")[Engine])
 
     content(
-      (rel: (7, 1), update: false),
+      (rel: (8, -1), update: false),
       text(fill: black)[Solutions],
       frame: "rect",
       stroke: 2pt + exeter-light,
@@ -151,7 +160,7 @@ It has three main components:
     line("parser", "translator", mark: (end: ">"), stroke: 2pt, name: "parser_to_translator")
     content(
       "parser_to_translator.mid",
-      text(fill: black, size: .7em)[Abstract Syntax Tree],
+      text(fill: black, size: .7em)[AST],
       frame: "rect",
       stroke: none,
       fill: white,
@@ -160,7 +169,7 @@ It has three main components:
     line("translator", "engine", mark: (end: ">"), stroke: 2pt, name: "translator_to_engine")
     content(
       "translator_to_engine.mid",
-      text(fill: black, size: .7em)[Internal Representation],
+      text(fill: black, size: .7em)[Internal \ Representation],
       frame: "rect",
       stroke: none,
       fill: white,
@@ -169,148 +178,22 @@ It has three main components:
   })
 ]
 
-Fuzzy logic allows for reasoning about imprecise or uncertain information @zadeh_fuzzy_1988:
-- Fuzzy sets define a membership function $mu : X -> [0, 1]$ that assigns a degree of membership to each element in the set.
-- Allows for imprecise concepts such as 'hot' and 'cold' to be represented and reasoned about.
-- Conjunction and disjunction are respectively performed using the minimum and maximum of the truth values.
+#colbreak(weak: true)
 
-#figure(
-  caption: [Example fuzzy sets for temperature.],
-  placement: auto,
-)[
-  #image("./assets/fuzzy_sets.png", width: 80%)
-] <fig:sets>
-
-= Implementation
-== Engine
-At the core of the execution of Prolog queries is the engine.
-
-- Environment stores variable bindings.
-- Equivalence relation allows for unification of values.
-- Stack of goals to be solved.
-- Stack of choice points to allow for backtracking.
-
-// Uses the above components to execute the algorithm for solving a query:
-// + If the goal stack is empty:
-//   + Halt if the environent is also empty.
-//   + Otherwise, record the current solution and backtrack.
-// + Otherwise, attempt to handle the current goal:
-//   + Conjunctions and disjunctions are handled by pushing the appropriate goals onto the stack.
-//   + Constraint goals are evaluated to fuzzy truth values which are pushed to the goal stack.
-//   + If the goal is a truth value, update the current query's truth value and backtrack if it is below the 'true' threshold.
-
-// #figure(
-//   caption: [Overview of the engine.],
-//   placement: auto,
-// )[
-//   #cetz.canvas({
-//     import cetz.draw: *
-
-//     let size = 2.5
-
-//     // Goal stack (stack of rects)
-//     rect(
-//       (rel: (0, -1.2)),
-//       (rel: (6, 1.2), update: false),
-//       stroke: 2pt + exeter-dark,
-//       name: "goal_top",
-//     )
-//     content((rel: (3, 0.6), update: false), text(fill: exeter-dark)[$"current goal"$])
-
-//     rect(
-//       (rel: (0, -1.2)),
-//       (rel: (6, 1.2), update: false),
-//       stroke: 2pt + exeter-dark,
-//     )
-//     content((rel: (3, 0.6), update: false), text(fill: exeter-dark)[$dots.v$])
-
-//     rect(
-//       (rel: (0, -1.2)),
-//       (rel: (6, 1.2), update: false),
-//       stroke: 2pt + exeter-dark,
-//     )
-//     content((rel: (3, 0.6), update: false), text(fill: exeter-dark)[$"query goal"$])
-
-//     content((rel: (3, -.7), update: false), text(fill: exeter-dark)[Goal Stack])
-
-//     content((3, 2), [Engine], frame: "rect", stroke: 2pt + exeter-light, padding: .5em, name: "engine")
-
-//     rect(
-//       (rel: (5, -.7)),
-//       (rel: (6, 1.2), update: false),
-//       stroke: 2pt + exeter-dark,
-//       name: "choice_top",
-//     )
-//     content((rel: (3, 0.6), update: false), text(fill: exeter-dark)[$"choice point"$])
-
-//     rect(
-//       (rel: (0, -1.2)),
-//       (rel: (6, 1.2), update: false),
-//       stroke: 2pt + exeter-dark,
-//     )
-//     content((rel: (3, 0.6), update: false), text(fill: exeter-dark)[$dots.v$])
-
-//     line("goal_top", "engine", mark: (end: ">", start: ">"), stroke: 2pt)
-//     line("choice_top", "engine", mark: (end: ">", start: ">"), stroke: 2pt)
-//   })
-// ]
-
-== Fuzzy Logic
+== Fuzzy Prolog
 The integration of fuzzy logic into a simple Prolog interpreter is a novel contribution.
 
-- Predicates return a degree of truth rather than a boolean.
-- Users can define their own membership functions, for example 'trapezoidal'.
-- Truth values can be expressions that are evaluated using arguments of the predicate.
-- Conjunction and disjunction are performed using the minimum and maximum of the truth values respectively.
-- Truth values below a certain threshold are treated as false.
+The method I chose to implement fuzzy logic is as follows:
+- Predicates return a degree of truth (float).
+- Truth values can be values or expressions.
+- Users define their own membership functions.
+- Conjunction and disjunction are performed using minimum and maximum.
+See @fig:fuzzy_prolog for an example of how fuzzy predicates are defined and used in my implementation.
 
 #figure(
-  caption: [Example usage of fuzzy logic.],
-  placement: auto,
+  caption: [A fuzzy Prolog program using my implementation.],
+  placement: none,
 )[
-  #cetz.canvas({
-    import cetz.draw: *
-
-    let size = 2.5
-
-    circle((0, 0), radius: size, fill: exeter-dark, stroke: none, name: "controller")
-    content((0, 0), text(weight: "bold", fill: white)[Controller])
-
-    content(
-      (rel: (6, 5)),
-      text(fill: black)[Fuzzy 'Warm'],
-      frame: "rect",
-      stroke: 2pt + exeter-light,
-      padding: .5em,
-      name: "fuzzy_warm",
-    )
-    content(
-      (rel: (-6, 3)),
-      text(fill: black)[Crisp 'Occupied'],
-      frame: "rect",
-      stroke: 2pt + exeter-light,
-      padding: .5em,
-      name: "crisp_occupied",
-    )
-
-    let p = (1, 4)
-
-    line("fuzzy_warm", p, stroke: 2pt)
-    line("crisp_occupied", p, "controller", mark: (end: ">"), stroke: 2pt)
-
-    content(
-      (rel: (6, -2.3)),
-      text(fill: black)[Heating],
-      frame: "rect",
-      stroke: 2pt + exeter-light,
-      padding: .5em,
-      name: "heater_on",
-    )
-    line("controller", "heater_on", mark: (end: ">"), stroke: 2pt)
-  })
-]
-
-#figure(caption: [Definition of Trapezoidal Membership Functions.], placement: auto)[
   ```
   trapezoidal(X, A, _, _, _) :~
     X < A,
@@ -334,21 +217,98 @@ The integration of fuzzy logic into a simple Prolog interpreter is a novel contr
   warm(X) :~
     trapezoidal(X, 15, 20, 25, 30).
   ```
-]
+] <fig:fuzzy_prolog>
 
-= Results
-The implementation of Mini-Prolog was successful and supports the core features of Prolog.
+The main modifications I made to the implementation in order to support fuzzy logic were:
+- Adding fuzzy predicate syntax to the parser.
+- Backtracking to evaluate all branches in order to find the maximum truth value.
+- Halting the exploration of a branch if the truth value goes below a threshold.
 
-The extension to support fuzzy logic was also successful. Fuzzy predicates are intuitive to define and use, and the engine correctly evaluates truth values according to the defined semantics.
+My implementation allows for standard Prolog alongside fuzzy predicates, and they can be used together in the same program.
 
-== Future Work
+#colbreak(weak: true)
+
+= Results \& Achievements
+A simple Prolog interpreter that supports fuzzy logic has not been implemented in Rust before, to the best of my knowledge.
+
+I have:
+- Implemented core features of Prolog in a simple Rust interpreter.
+- Extended to support fuzzy logic with a natural syntax and semantics.
+- Programs can be entirely crisp, entirely fuzzy, or a mixture of both.
+
+My work has given me a deeper understanding of Prolog and fuzzy logic, and has provided a foundation for future work in this area.
+
+#v(1fr)
+
+= Future Work
 - Allow for user-defined aggregation functions for combining truth values.
 - Implement a full Prolog interpreter, for example the Warren Abstract Machine (WAM).
 - Modify an existing Rust-based Prolog implementation to support fuzzy logic.
 
-= Conclusion
+#v(1fr)
+
+#figure(
+  caption: [Example fuzzy sets for temperature.],
+  placement: none,
+)[
+  #image("./assets/fuzzy_sets.png", width: 90%)
+] <fig:sets>
+
+#v(1fr)
+
+// #figure(
+//   caption: [Example usage of fuzzy logic.],
+//   placement: auto,
+// )[
+//   #cetz.canvas({
+//     import cetz.draw: *
+
+//     let size = 2.5
+
+//     circle((0, 0), radius: size, fill: exeter-dark, stroke: none, name: "controller")
+//     content((0, 0), text(weight: "bold", fill: white)[Controller])
+
+//     content(
+//       (rel: (6, 5)),
+//       text(fill: black)[Fuzzy 'Warm'],
+//       frame: "rect",
+//       stroke: 2pt + exeter-light,
+//       padding: .5em,
+//       name: "fuzzy_warm",
+//     )
+//     content(
+//       (rel: (-6, 3)),
+//       text(fill: black)[Crisp 'Occupied'],
+//       frame: "rect",
+//       stroke: 2pt + exeter-light,
+//       padding: .5em,
+//       name: "crisp_occupied",
+//     )
+
+//     let p = (1, 4)
+
+//     line("fuzzy_warm", p, stroke: 2pt)
+//     line("crisp_occupied", p, "controller", mark: (end: ">"), stroke: 2pt)
+
+//     content(
+//       (rel: (6, -2.3)),
+//       text(fill: black)[Heating],
+//       frame: "rect",
+//       stroke: 2pt + exeter-light,
+//       padding: .5em,
+//       name: "heater_on",
+//     )
+//     line("controller", "heater_on", mark: (end: ">"), stroke: 2pt)
+//   })
+// ]
+
+= Conclusions
 - Standard Prolog programs and queries can be executed using the implemented engine.
-- Fuzzy logic can be integrated into a Prolog interpreter in a natural way, allowing for reasoning about imprecise information.
+- Fuzzy logic can be integrated into a Prolog interpreter in a natural way.
 - This project has provided me with a deeper understanding of Prolog and Fuzzy logic.
 
+#v(1fr)
+
 #bibliography("refs.bib")
+
+#v(1fr)
