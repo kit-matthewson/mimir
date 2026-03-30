@@ -51,14 +51,10 @@
     heading-numbering-format: "",
     body: none,
   ),
-  // The result of a call to the `bibliography` function or `none`.
-  // Example: bibliography("refs.bib")
-  // More info: https://typst.app/docs/reference/model/bibliography/
-  bibliography: none,
   // Whether to start a chapter on a new page.
   chapter-pagebreak: false,
   // Whether to display a maroon circle next to external links.
-  external-link-circle: true,
+  external-link-circle: false,
   // Display an index of figures (images).
   figure-index: (
     enabled: false,
@@ -83,8 +79,8 @@
   set document(title: title, author: author)
 
   // Set fonts.
-  set text(size: 11pt, font: "New Computer Modern")
-  show raw: set text(font: "New Computer Modern Math")
+  set text(size: 11pt)
+  // show raw: set text(font: "New Computer Modern Math")
 
   // Set paragraph properties.
   show heading: set block(above: 1.4em, below: 1em)
@@ -259,13 +255,13 @@
   }
 
   // Display bibliography.
-  if bibliography != none {
-    pagebreak()
-    show std-bibliography: set text(0.85em)
-    // Use default paragraph properties for bibliography.
-    show std-bibliography: set par(leading: 0.65em, justify: false, linebreaks: auto)
-    bibliography
-  }
+  // if bibliography != none {
+  //   pagebreak()
+  //   show std-bibliography: set text(0.85em)
+  //   // Use default paragraph properties for bibliography.
+  //   show std-bibliography: set par(leading: 0.65em, justify: false, linebreaks: auto)
+  //   bibliography
+  // }
 
   // Display indices of figures, tables, and listings.
   let fig-t(kind) = figure.where(kind: kind)
