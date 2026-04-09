@@ -17,31 +17,52 @@ pub struct Engine {
     truth_threshold: f64,
 }
 
+/// A solution returned by the engine after executing a query.
+#[derive(Debug, Clone)]
+pub struct Solution {
+    env: Environment,
+    equiv: Equivalence,
+    truth_value: f64,
+}
+
+impl Solution {
+    /// Create a solution from a given state.
+    fn from_state(state: &State) -> Self {
+        Solution {
+            env: state.env.clone(),
+            equiv: state.equiv.clone(),
+            truth_value: state.truth_value,
+        }
+    }
+
+    /// Gets the value of a variable in this solution.
+    pub fn get(&self, var: &Variable) -> Result<Value, EngineError> {
+        self.env.get(var, &self.equiv)
+    }
+
+    /// Gets the truth value of this solution.
+    pub fn truth_value(&self) -> f64 {
+        self.truth_value
+    }
+}
+
 /// The current state of the engine during execution.
 ///
 /// Contains:
 /// - The current environment, which maps variables to values.
 /// - The current equivalence, which maps terms to their unified representatives.
+/// - The current truth value of the state, which is updated as goals are processed.
+/// - A placeholder generator for creating new placeholders during execution.
+#[derive(Debug, Clone)]
 struct State {
     env: Environment,
     equiv: Equivalence,
-    goal_stack: Vec<Goal>,
-    choice_stack: Vec<Choice>,
     truth_value: f64,
     placeholder_gen: PlaceholderGenerator,
 }
 
-impl State {
-    pub fn restore_choice(&mut self, choice: Choice) {
-        self.env = choice.env;
-        self.equiv = choice.equiv;
-        self.goal_stack = choice.goal_stack;
-        self.goal_stack.push(choice.goal);
-    }
-}
-
 impl Engine {
-    /// Create a new engine from a given program. Initialises the clause database.
+    /// Create a new engine for a given program. Initialises the clause database.
     pub fn new(program: Vec<Clause>, truth_threshold: f64) -> Self {
         let db = ClauseDatabase::new(program);
 
@@ -52,195 +73,187 @@ impl Engine {
     }
 
     /// Execute the engine on the given query.
-    pub fn execute(&self, query: Query) -> Result<Vec<(Environment, Equivalence)>, EngineError> {
+    pub fn execute(&self, query: Query) -> Result<Vec<Solution>, EngineError> {
         let mut placeholder_gen = PlaceholderGenerator::new();
 
-        let mut state = State {
+        let state = State {
             env: Environment::for_query(&query, &mut placeholder_gen),
             equiv: Equivalence::new(),
-            goal_stack: vec![query.goal],
-            choice_stack: Vec::new(),
             truth_value: 1.0,
             placeholder_gen,
         };
 
-        let mut solutions = Vec::new();
+        let final_states = self.handle_goal(query.goal, state)?;
 
-        loop {
-            if let Some(goal) = state.goal_stack.pop() {
-                self.handle_goal(goal, &mut state)?;
-            } else {
-                // Goal stack is empty, check termination conditions
-                if state.env.is_empty() {
-                    // All valid assignments found
-                    break;
-                } else {
-                    solutions.push((state.env.clone(), state.equiv.clone()));
+        // Solutions are actually just variable bindings from the final states
+        let mut solutions = final_states
+            .iter()
+            .map(Solution::from_state)
+            .collect::<Vec<_>>();
 
-                    // We might be able to find another assignment
-                    state.goal_stack.push(Goal::TruthValue(0.0));
-                }
-            }
-        }
+        // Order solutions by truth value, highest first
+        solutions.sort_by(|s1, s2| s2.truth_value.partial_cmp(&s1.truth_value).unwrap());
 
         Ok(solutions)
     }
 
-    fn handle_goal(&self, goal: Goal, state: &mut State) -> Result<(), EngineError> {
+    fn handle_goal(&self, goal: Goal, state: State) -> Result<Vec<State>, EngineError> {
         match goal {
             Goal::Conjunction(goal1, goal2) => {
-                state.goal_stack.push(*goal2);
-                state.goal_stack.push(*goal1);
+                // Get all states from goal1
+                let goal1_states = self.handle_goal(*goal1, state)?;
+
+                // We now evaluate goal2 for each state returned by goal1, and combine all the results
+                let mut all_states = Vec::new();
+                for state1 in goal1_states {
+                    let goal2_states = self.handle_goal(*goal2.clone(), state1)?;
+                    all_states.extend(goal2_states);
+                }
+
+                Ok(all_states)
             }
 
             Goal::Disjunction(goal1, goal2) => {
-                let choice = Choice::new(
-                    *goal2,
-                    state.env.clone(),
-                    state.equiv.clone(),
-                    state.truth_value,
-                    state.goal_stack.clone(),
-                );
+                // Evaluate both branches independently
+                let goal1_states = self.handle_goal(*goal1, state.clone())?;
+                let goal2_states = self.handle_goal(*goal2, state)?;
 
-                state.choice_stack.push(choice);
-                state.goal_stack.push(*goal1);
+                // Combine all states from both branches
+                let mut all_states = goal1_states;
+                all_states.extend(goal2_states);
+
+                Ok(all_states)
             }
 
             Goal::Equivalence(var1, var2) => {
                 let val1 = state.env.get(&var1, &state.equiv)?;
                 let val2 = state.env.get(&var2, &state.equiv)?;
 
-                if state.equiv.unify(&val1, &val2).is_err() {
-                    state.goal_stack.push(Goal::TruthValue(0.0));
+                let mut new_equiv = state.equiv.clone();
+
+                match new_equiv.unify(&val1, &val2) {
+                    Ok(_) => {
+                        let mut new_state = state;
+                        new_state.equiv = new_equiv;
+                        Ok(vec![new_state])
+                    }
+                    Err(_) => Ok(vec![]),
                 }
             }
 
-            Goal::Check { functor, params } => {
-                self.handle_check(state, functor, params)?;
-            }
-
-            Goal::Restore(new_env) => state.env = new_env,
+            Goal::Check { functor, params } => self.handle_check(state, functor, params),
 
             Goal::Relation(var1, var2, op) => {
-                self.handle_relation(state, var1, var2, op)?;
+                // Get the values of both variables
+                let val1 = state.env.get(&var1, &state.equiv)?;
+                let val2 = state.env.get(&var2, &state.equiv)?;
+
+                // Ensure both are numbers
+                let num1 = if let Some(num) = val1.get_number() {
+                    num
+                } else {
+                    return Err(EngineError::NotANumber(var1));
+                };
+
+                let num2 = if let Some(num) = val2.get_number() {
+                    num
+                } else {
+                    return Err(EngineError::NotANumber(var2));
+                };
+
+                // Evaluate the relation
+                let result = op.evaluate(num1, num2);
+
+                if result { Ok(vec![state]) } else { Ok(vec![]) }
             }
 
+            // Assignment is very similar to unification, only the second term is an expression that evaluates to a value rather than a variable.
             Goal::Assign(var, rhs) => {
                 let val1 = state.env.get(&var, &state.equiv)?;
                 let val2 = rhs.evaluate(&state.env, &state.equiv)?;
-                state.equiv.unify(&val1, &val2)?;
+
+                let mut new_equiv = state.equiv.clone();
+
+                match new_equiv.unify(&val1, &val2) {
+                    Ok(_) => {
+                        let mut new_state = state;
+                        new_state.equiv = new_equiv;
+                        Ok(vec![new_state])
+                    }
+                    Err(_) => Ok(vec![]),
+                }
             }
 
             Goal::TruthValueExpr(expr) => {
                 let val = expr.evaluate(&state.env, &state.equiv)?;
-                state.goal_stack.push(Goal::TruthValue(*val));
+                self.handle_goal(Goal::TruthValue(*val), state)
             }
 
             Goal::TruthValue(t) => {
-                // Update the current truth value
-                state.truth_value = state.truth_value.min(t);
+                // Update the current truth value using min (conjunction)
+                let new_truth_value = state.truth_value.min(t);
 
-                if state.truth_value < self.truth_threshold {
-                    // Backtrack if there are choices available, otherwise clear the environment and goal stack to terminate
-                    if let Some(choice) = state.choice_stack.pop() {
-                        state.restore_choice(choice);
-                    } else {
-                        state.env.clear();
-                        state.goal_stack.clear();
-                    }
+                if new_truth_value < self.truth_threshold {
+                    Ok(vec![]) // Below threshold
+                } else {
+                    let mut new_state = state;
+                    new_state.truth_value = new_truth_value;
+                    Ok(vec![new_state])
                 }
             }
         }
-
-        Ok(())
-    }
-
-    fn handle_relation(
-        &self,
-        state: &mut State,
-        var1: Variable,
-        var2: Variable,
-        op: RelationalOp,
-    ) -> Result<(), EngineError> {
-        // Get the values of both variables
-        let val1 = state.env.get(&var1, &state.equiv)?;
-        let val2 = state.env.get(&var2, &state.equiv)?;
-
-        // Ensure both are numbers
-        let num1 = if let Some(num) = val1.get_number() {
-            num
-        } else {
-            return Err(EngineError::NotANumber(var1));
-        };
-
-        let num2 = if let Some(num) = val2.get_number() {
-            num
-        } else {
-            return Err(EngineError::NotANumber(var2));
-        };
-
-        // Evaluate the relation
-        let result = op.evaluate(num1, num2);
-
-        // If the relation is false, push a failure goal
-        if !result {
-            state.goal_stack.push(Goal::TruthValue(0.0));
-        }
-
-        Ok(())
     }
 
     fn handle_check(
         &self,
-        state: &mut State,
+        state: State,
         functor: String,
         params: Vec<Variable>,
-    ) -> Result<(), EngineError> {
+    ) -> Result<Vec<State>, EngineError> {
         // Try and get clauses for the given functor and arity
         let clauses = self.db.get(&functor, params.len());
         if clauses.is_empty() {
             return Err(EngineError::ClauseNotFound(functor, params.len()));
         }
 
-        // Push a restore goal to revert the environment after trying all clauses
-        state.goal_stack.push(Goal::Restore(state.env.clone()));
+        let mut resultant_states = Vec::new();
 
-        // Push choices for all but the first clause
-        // The first clause is handled directly so we do not have not make an extra choice
-        for clause in clauses.iter().skip(1).rev() {
+        for clause in clauses {
             let clause_env = Environment::for_symbol_with_params(
                 clause.head(),
                 &params,
                 &state.env,
                 &state.equiv,
-                &mut state.placeholder_gen,
+                &mut state.placeholder_gen.clone(),
             )?;
 
-            let choice = Choice::new(
-                clause.body().clone(),
-                clause_env,
-                state.equiv.clone(),
-                state.truth_value,
-                state.goal_stack.clone(),
-            );
+            let clause_state = State {
+                env: clause_env,
+                equiv: state.equiv.clone(),
+                truth_value: state.truth_value,
+                placeholder_gen: state.placeholder_gen.clone(),
+            };
 
-            state.choice_stack.push(choice);
+            match self.handle_goal(clause.body().clone(), clause_state) {
+                Ok(clause_result_states) => {
+                    // The equivalent to Dewey's 'Restore' goal for the recursive method
+                    for clause_result_state in clause_result_states {
+                        let mut result_state = state.clone();
+                        // Keep the equivalence from the clause execution
+                        result_state.equiv = clause_result_state.equiv;
+                        // Keep the truth value from the clause execution
+                        result_state.truth_value = clause_result_state.truth_value;
+                        resultant_states.push(result_state);
+                    }
+                }
+                Err(_) => {
+                    // This clause failed, try the next one
+                    continue;
+                }
+            }
         }
 
-        // Handle the first clause directly
-        let first_clause = clauses.first().unwrap();
-
-        state.env = Environment::for_symbol_with_params(
-            first_clause.head(),
-            &params,
-            &state.env,
-            &state.equiv,
-            &mut state.placeholder_gen,
-        )?;
-
-        state.goal_stack.push(first_clause.body().clone());
-
-        Ok(())
+        Ok(resultant_states)
     }
 }
 
@@ -251,38 +264,6 @@ mod tests {
     use crate::{clause, var_vec};
 
     use super::*;
-
-    #[test]
-    fn test_restore_choice() {
-        let mut state = State {
-            env: Environment::empty(),
-            equiv: Equivalence::new(),
-            goal_stack: vec![Goal::Check {
-                functor: "some_goal".to_string(),
-                params: var_vec!["X"],
-            }],
-            choice_stack: Vec::new(),
-            truth_value: 1.0,
-            placeholder_gen: PlaceholderGenerator::new(),
-        };
-
-        let choice = Choice::new(
-            Goal::Assign(Variable::new("X"), RHSTerm::Num(OrderedFloat::from(10.0))),
-            Environment::empty(),
-            Equivalence::new(),
-            1.0,
-            vec![Goal::Check {
-                functor: "some_goal".to_string(),
-                params: var_vec!["X"],
-            }],
-        );
-
-        state.restore_choice(choice);
-
-        assert_eq!(state.goal_stack.len(), 2);
-        assert!(matches!(state.goal_stack[0], Goal::Check { .. }));
-        assert!(matches!(state.goal_stack[1], Goal::Assign(_, _)));
-    }
 
     #[test]
     fn test_engine_simple_query() {
@@ -305,15 +286,15 @@ mod tests {
         let solutions = engine.execute(query.clone()).unwrap();
 
         let mut results = vec![];
-        for (env, equiv) in solutions.iter() {
-            let value = env.get(&Variable::new("X"), equiv).unwrap();
+        for solution in solutions.iter() {
+            let value = solution.get(&Variable::new("X")).unwrap();
             results.push(value);
         }
 
         assert_eq!(results.len(), 1);
         assert!(results.contains(&Value::Number(OrderedFloat::from(10.0))));
 
-        // Query: is_ten(5)
+        // Query: is_ten(5) - should return no solutions because X can't be both 10 and 5
         let query_fail = Query {
             local_vars: var_vec!["X"],
             goal: Goal::Conjunction(
@@ -328,9 +309,9 @@ mod tests {
             ),
         };
 
-        // The engine currently returns an error if terms cannot be unified
-        let solutions = engine.execute(query_fail.clone());
-        assert!(solutions.is_err());
+        // The engine returns no solutions if unification fails
+        let solutions = engine.execute(query_fail.clone()).unwrap();
+        assert_eq!(solutions.len(), 0);
     }
 
     #[test]
@@ -363,8 +344,8 @@ mod tests {
         let solutions = engine.execute(query.clone()).unwrap();
 
         let mut results = vec![];
-        for (env, equiv) in solutions.iter() {
-            let value = env.get(&Variable::new("X"), equiv).unwrap();
+        for solution in solutions.iter() {
+            let value = solution.get(&Variable::new("X")).unwrap();
             results.push(value);
         }
 
@@ -384,11 +365,9 @@ mod tests {
 
         let engine = Engine::new(vec![], 0.01);
 
-        let mut state = State {
+        let state = State {
             env,
             equiv: Equivalence::new(),
-            goal_stack: Vec::new(),
-            choice_stack: Vec::new(),
             truth_value: 1.0,
             placeholder_gen: PlaceholderGenerator::new(),
         };
@@ -396,18 +375,18 @@ mod tests {
         // 10 = 10
         let result = engine.handle_goal(
             Goal::Equivalence(Variable::new("X"), Variable::new("Y")),
-            &mut state,
+            state.clone(),
         );
         assert!(result.is_ok());
-        assert_eq!(state.goal_stack.len(), 0);
+        assert!(!result.unwrap().is_empty());
 
         // Placeholder should unify with 10
         let result = engine.handle_goal(
             Goal::Equivalence(Variable::new("Z"), Variable::new("X")),
-            &mut state,
+            state,
         );
         assert!(result.is_ok());
-        assert_eq!(state.goal_stack.len(), 0);
+        assert!(!result.unwrap().is_empty());
     }
 
     #[test]
@@ -419,11 +398,9 @@ mod tests {
 
         let engine = Engine::new(vec![], 0.01);
 
-        let mut state = State {
+        let state = State {
             env,
             equiv: Equivalence::new(),
-            goal_stack: Vec::new(),
-            choice_stack: Vec::new(),
             truth_value: 1.0,
             placeholder_gen: PlaceholderGenerator::new(),
         };
@@ -431,23 +408,22 @@ mod tests {
         // 5 cannot equal 10
         let result = engine.handle_goal(
             Goal::Equivalence(Variable::new("X"), Variable::new("Y")),
-            &mut state,
+            state.clone(),
         );
         println!("{:?}", result);
         assert!(result.is_ok());
-        assert_eq!(state.goal_stack.len(), 1);
-        assert!(matches!(state.goal_stack[0], Goal::TruthValue(0.0)));
+        assert!(result.unwrap().is_empty());
 
         // Variable Z does not exist in the environment
         let result = engine.handle_goal(
             Goal::Equivalence(Variable::new("Z"), Variable::new("X")),
-            &mut state,
+            state.clone(),
         );
         assert!(result.is_err());
 
         let result = engine.handle_goal(
             Goal::Equivalence(Variable::new("X"), Variable::new("Z")),
-            &mut state,
+            state,
         );
         assert!(result.is_err());
     }
@@ -460,11 +436,9 @@ mod tests {
         env.assign(&Variable::new("Y"), Value::num(0.3));
 
         let engine = Engine::new(vec![], 0.01);
-        let mut state = State {
+        let state = State {
             env,
             equiv: Equivalence::new(),
-            goal_stack: Vec::new(),
-            choice_stack: Vec::new(),
             truth_value: 1.0,
             placeholder_gen: PlaceholderGenerator::new(),
         };
@@ -478,14 +452,14 @@ mod tests {
                 Box::new(Expression::variable("Y")),
                 ArithmeticOp::Add,
             )),
-            &mut state,
+            state,
         );
 
         assert!(result.is_ok());
-        assert_eq!(state.goal_stack.len(), 1);
-        assert!(
-            matches!(state.goal_stack[0], Goal::TruthValue(t) if (t - 0.4).abs() < f64::EPSILON)
-        );
+        let states = result.unwrap();
+        assert!(!states.is_empty());
+        // Resultant truth value should be 0.4
+        assert!((states.first().unwrap().truth_value - 0.4).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -496,36 +470,36 @@ mod tests {
 
         let engine = Engine::new(vec![], 0.01);
 
-        let mut state = State {
+        let state = State {
             env,
             equiv: Equivalence::new(),
-            goal_stack: Vec::new(),
-            choice_stack: Vec::new(),
             truth_value: 1.0,
             placeholder_gen: PlaceholderGenerator::new(),
         };
 
         // Test X > Y
-        let result = engine.handle_relation(
-            &mut state,
-            Variable::new("X"),
-            Variable::new("Y"),
-            RelationalOp::GreaterThan,
+        let result = engine.handle_goal(
+            Goal::Relation(
+                Variable::new("X"),
+                Variable::new("Y"),
+                RelationalOp::GreaterThan,
+            ),
+            state.clone(),
         );
         assert!(result.is_ok());
-        assert_eq!(state.goal_stack.len(), 0);
-        assert!((state.truth_value - 1.0).abs() < f64::EPSILON);
+        assert!(!result.unwrap().is_empty());
 
         // Test X < Y
-        let result = engine.handle_relation(
-            &mut state,
-            Variable::new("X"),
-            Variable::new("Y"),
-            RelationalOp::LessThan,
+        let result = engine.handle_goal(
+            Goal::Relation(
+                Variable::new("X"),
+                Variable::new("Y"),
+                RelationalOp::LessThan,
+            ),
+            state,
         );
         assert!(result.is_ok());
-        assert_eq!(state.goal_stack.len(), 1);
-        assert!(matches!(state.goal_stack[0], Goal::TruthValue(0.0)));
+        assert!(result.unwrap().is_empty());
     }
 
     #[test]
@@ -538,29 +512,31 @@ mod tests {
 
         let engine = Engine::new(vec![], 0.01);
 
-        let mut state = State {
+        let state = State {
             env,
             equiv: Equivalence::new(),
-            goal_stack: Vec::new(),
-            choice_stack: Vec::new(),
             truth_value: 1.0,
             placeholder_gen: PlaceholderGenerator::new(),
         };
 
         // X > Y and Y > X
-        let result = engine.handle_relation(
-            &mut state,
-            Variable::new("X"),
-            Variable::new("Y"),
-            RelationalOp::GreaterThan,
+        let result = engine.handle_goal(
+            Goal::Relation(
+                Variable::new("X"),
+                Variable::new("Y"),
+                RelationalOp::GreaterThan,
+            ),
+            state.clone(),
         );
         assert!(result.is_err());
 
-        let result = engine.handle_relation(
-            &mut state,
-            Variable::new("Y"),
-            Variable::new("X"),
-            RelationalOp::GreaterThan,
+        let result = engine.handle_goal(
+            Goal::Relation(
+                Variable::new("Y"),
+                Variable::new("X"),
+                RelationalOp::GreaterThan,
+            ),
+            state,
         );
         assert!(result.is_err());
     }
@@ -578,24 +554,26 @@ mod tests {
 
         let engine = Engine::new(program, 0.01);
 
-        let mut state = State {
+        let state = State {
             env,
             equiv: Equivalence::new(),
-            goal_stack: Vec::new(),
-            choice_stack: Vec::new(),
             truth_value: 1.0,
             placeholder_gen: PlaceholderGenerator::new(),
         };
 
-        let result = engine.handle_check(&mut state, "clause".to_string(), var_vec!["X"]);
+        let result = engine.handle_check(state, "clause".to_string(), var_vec!["X"]);
         println!("{:?}", result);
         assert!(result.is_ok());
-        assert_eq!(state.choice_stack.len(), 1);
-        assert_eq!(state.goal_stack.len(), 2);
-        assert!(matches!(state.goal_stack[1], Goal::Equivalence(_, _)));
 
         // Should fail if we ask for the wrong arity
-        let result = engine.handle_check(&mut state, "clause".to_string(), var_vec!["X", "Y"]);
+        let env = Environment::empty();
+        let state = State {
+            env,
+            equiv: Equivalence::new(),
+            truth_value: 1.0,
+            placeholder_gen: PlaceholderGenerator::new(),
+        };
+        let result = engine.handle_check(state, "clause".to_string(), var_vec!["X", "Y"]);
         assert!(result.is_err());
     }
 }

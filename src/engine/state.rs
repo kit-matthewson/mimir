@@ -25,8 +25,6 @@ pub enum Goal {
         /// The parameters of the clause.
         params: Vec<Variable>,
     },
-    /// A special goal that restores a previous environment.
-    Restore(Environment),
     /// Relational statements for numbers.
     Relation(Variable, Variable, RelationalOp),
     /// Make a variable equivilant to some term.
@@ -51,7 +49,6 @@ impl std::fmt::Display for Goal {
                     .join(", ");
                 write!(f, "{}({})", functor, args_str)
             }
-            Goal::Restore(_) => write!(f, "<restore env>"),
             Goal::Relation(v1, v2, op) => {
                 let op_str = match op {
                     RelationalOp::LessThan => "<",
@@ -66,42 +63,6 @@ impl std::fmt::Display for Goal {
             Goal::Assign(var, term) => write!(f, "{} := {:?}", var, term),
             Goal::TruthValue(t) => write!(f, "{}", t),
             Goal::TruthValueExpr(expr) => write!(f, "truth: {:?}", expr),
-        }
-    }
-}
-
-/// A choice contains the information needed to recover from a backtrack.
-///
-/// Choices are created when the engine needs to branch, such as when handling disjunctions.
-/// They store the environment, equivalence, and goal stack at the point of the choice.
-pub struct Choice {
-    /// The goal to pursue on backtrack.
-    pub goal: Goal,
-    /// The environment when the choice was made.
-    pub env: Environment,
-    /// The equivalence when the choice was made.
-    pub equiv: Equivalence,
-    /// The truth value when the choice was made.
-    pub truth_value: f64,
-    /// The goal stack when the choice was made.
-    pub goal_stack: Vec<Goal>,
-}
-
-impl Choice {
-    /// Create a new choice when a decision has been made.
-    pub fn new(
-        goal: Goal,
-        env: Environment,
-        equiv: Equivalence,
-        truth_value: f64,
-        goal_stack: Vec<Goal>,
-    ) -> Self {
-        Choice {
-            goal,
-            env,
-            equiv,
-            truth_value,
-            goal_stack,
         }
     }
 }
@@ -287,7 +248,7 @@ impl Default for ClauseDatabase {
 ///
 /// The equivalence relation allows us to unify terms and track which terms are considered equal.
 /// Each value has a 'set representative', which is the canonical value for that equivalence class.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Equivalence {
     equiv: HashMap<Value, Value>,
 }
@@ -368,29 +329,6 @@ mod tests {
     use crate::var_vec;
 
     use super::*;
-
-    #[test]
-    fn test_choice_creation() {
-        let goal = Goal::TruthValue(1.0);
-        let env = Environment::empty();
-        let equiv = Equivalence::new();
-        let truth_value = 1.0;
-        let goal_stack = vec![Goal::TruthValue(0.0)];
-
-        let choice = Choice::new(
-            goal.clone(),
-            env.clone(),
-            equiv.clone(),
-            truth_value,
-            goal_stack.clone(),
-        );
-
-        assert_eq!(choice.goal, goal);
-        assert_eq!(choice.env, env);
-        assert_eq!(choice.equiv.equiv, equiv.equiv);
-        assert_eq!(choice.truth_value, truth_value);
-        assert_eq!(choice.goal_stack, goal_stack);
-    }
 
     #[test]
     fn test_environment_creation() {

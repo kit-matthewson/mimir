@@ -97,6 +97,7 @@ impl Value {
 ///
 /// assert!(a != b);
 /// ```
+#[derive(Debug, Clone)]
 pub struct PlaceholderGenerator {
     next: PlaceholderID,
 }

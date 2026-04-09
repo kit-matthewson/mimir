@@ -72,7 +72,7 @@ fn execute(program: &str, query: Query) -> Result<(), mimir::error::MimirError> 
     for solution in solutions.iter() {
         print!("  ");
         for var in &query.local_vars {
-            let value = solution.0.get(var, &solution.1)?;
+            let value = solution.get(var)?;
             print!("{} = {:?}", var, value);
             if var != query.local_vars.last().unwrap() {
                 print!(", ");
@@ -106,8 +106,8 @@ mod tests {
         let solutions = engine.execute(query).unwrap();
 
         assert_eq!(solutions.len(), 1);
-        let (env, equiv) = &solutions[0];
-        let value = env.get(&mimir::engine::Variable::new("X"), equiv).unwrap();
+        let solution = &solutions[0];
+        let value = solution.get(&mimir::engine::Variable::new("X")).unwrap();
         assert_eq!(
             value,
             mimir::engine::Value::Number(OrderedFloat::from(10.0))
@@ -138,8 +138,8 @@ mod tests {
         let solutions = engine.execute(query).unwrap();
 
         assert_eq!(solutions.len(), 1);
-        let (env, equiv) = &solutions[0];
-        let value = env.get(&mimir::engine::Variable::new("X"), equiv).unwrap();
+        let solution = &solutions[0];
+        let value = solution.get(&mimir::engine::Variable::new("X")).unwrap();
         assert_eq!(
             value,
             mimir::engine::Value::Number(OrderedFloat::from(11.0))
