@@ -33,9 +33,10 @@ pub fn translate(clause: ast::Clause) -> Result<engine::Clause, TranslationError
         .into_iter()
         .chain(std::iter::once(body_goals))
         .map(Box::new)
-        .fold(engine::Goal::TruthValue(1.0), |acc, goal| {
-            engine::Goal::Conjunction(goal, Box::new(acc))
-        });
+        .fold(
+            engine::Goal::TruthExpr(engine::Expression::num(1.0)),
+            |acc, goal| engine::Goal::Conjunction(goal, Box::new(acc)),
+        );
 
     // Create local and wild variable names for the clause
     let temp_vars = (0..state.temp_var_counter).map(|i| format!("_T{}", i));
@@ -109,7 +110,7 @@ fn translate_clause_body(
     state: &mut TranslationState,
 ) -> Result<engine::Goal, TranslationError> {
     if body.is_empty() {
-        return Ok(engine::Goal::TruthValue(1.0));
+        return Ok(engine::Goal::TruthExpr(engine::Expression::num(1.0)));
     }
 
     // Convert each goal and combine with conjunction
@@ -920,8 +921,8 @@ mod tests {
             engine::Goal::Conjunction(left, right) => {
                 // Left should be Bool(true) from the body
                 match left.as_ref() {
-                    engine::Goal::TruthValue(1.0) => {}
-                    _ => panic!("Expected TruthValue(1.0) on left"),
+                    engine::Goal::TruthExpr(_) => {}
+                    _ => panic!("Expected TruthExpr(_) on left"),
                 }
                 // Right should contain the unification goals
                 match right.as_ref() {
@@ -941,8 +942,8 @@ mod tests {
                         }
                         // The innermost right should be Bool(true)
                         match unif_right.as_ref() {
-                            engine::Goal::TruthValue(1.0) => {}
-                            _ => panic!("Expected TruthValue(1.0) innermost"),
+                            engine::Goal::TruthExpr(_) => {}
+                            _ => panic!("Expected TruthExpr(_) innermost"),
                         }
                     }
                     _ => panic!("Expected a nested Conjunction"),
@@ -989,7 +990,7 @@ mod tests {
                         }
                         current = right_inner.as_ref();
                     }
-                    engine::Goal::TruthValue(1.0) => break,
+                    engine::Goal::TruthExpr(_) => break,
                     engine::Goal::Assign(_, _) => {
                         goal_count += 1;
                         break;

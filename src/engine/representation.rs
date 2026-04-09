@@ -463,11 +463,11 @@ impl Clause {
     /// # use mimir::var_vec;
     /// let clause = Clause::new(
     ///    Symbol::new("my_clause", var_vec!["X", "Y"], vec![]),
-    ///    Goal::TruthValue(1.0),
+    ///    Goal::TruthExpr(Expression::num(1.0)),
     /// );
     /// assert_eq!(clause.head().functor(), "my_clause");
     /// assert_eq!(clause.arity(), 2);
-    /// assert_eq!(clause.body(), &Goal::TruthValue(1.0));
+    /// assert_eq!(clause.body(), &Goal::TruthExpr(Expression::num(1.0)));
     /// assert_eq!(clause.truth_value(), Expression::num(1.0));
     /// ```
     pub fn new(head: Symbol, body: Goal) -> Self {
@@ -491,14 +491,14 @@ impl Clause {
     /// assert_eq!(clause.arity(), 2);
     /// assert_eq!(clause.body(), &Goal::Conjunction(
     ///    Box::new(Goal::Check { functor: "some_goal".to_string(), params: var_vec!["X"] }),
-    ///    Box::new(Goal::TruthValueExpr(Expression::variable("Z"))),
+    ///    Box::new(Goal::TruthExpr(Expression::variable("Z"))),
     /// ));
     /// assert_eq!(clause.truth_value(), Expression::variable("Z"));
     /// ```
     pub fn fuzzy(head: Symbol, body: Goal, truth_value_expression: Expression) -> Self {
         let body = Goal::Conjunction(
             Box::new(body),
-            Box::new(Goal::TruthValueExpr(truth_value_expression.clone())),
+            Box::new(Goal::TruthExpr(truth_value_expression.clone())),
         );
 
         // TODO: Check that the truth value expression only contains variables that are in the head of this clause.
@@ -523,12 +523,15 @@ impl Clause {
     /// assert_eq!(clause.arity(), 2);
     /// assert_eq!(clause.body(), &Goal::Conjunction(
     ///     Box::new(Goal::Check { functor: "some_goal".to_string(), params: var_vec!["X"] }),
-    ///     Box::new(Goal::TruthValue(0.8))
+    ///     Box::new(Goal::TruthExpr(Expression::num(0.8)))
     /// ));
     /// assert_eq!(clause.truth_value(), Expression::num(0.8));
     /// ```
     pub fn fixed_fuzzy(head: Symbol, body: Goal, truth_value: f64) -> Self {
-        let body = Goal::Conjunction(Box::new(body), Box::new(Goal::TruthValue(truth_value)));
+        let body = Goal::Conjunction(
+            Box::new(body),
+            Box::new(Goal::TruthExpr(Expression::num(truth_value))),
+        );
 
         Clause { head, body }
     }
@@ -552,8 +555,7 @@ impl Clause {
         // Recursively search for a TruthValueExpr goal in the body of this clause
         fn search_goal(goal: &Goal) -> Option<Expression> {
             match goal {
-                Goal::TruthValueExpr(expr) => Some(expr.clone()),
-                Goal::TruthValue(n) => Some(Expression::Num(OrderedFloat::from(*n))),
+                Goal::TruthExpr(expr) => Some(expr.clone()),
                 Goal::Conjunction(g1, g2) | Goal::Disjunction(g1, g2) => {
                     search_goal(g1).or_else(|| search_goal(g2))
                 }
@@ -647,14 +649,14 @@ mod tests {
     fn test_clause_macro() {
         let my_clause = clause!(
             my_clause(X, Y) { Z } :-
-            Goal::TruthValue(1.0)
+            Goal::TruthExpr(Expression::num(1.0))
         );
 
         assert_eq!(my_clause.head().functor(), "my_clause");
         assert_eq!(my_clause.head().parameters(), &var_vec!["X", "Y"]);
         assert_eq!(my_clause.head().local_vars(), &var_vec!["Z"]);
         assert_eq!(my_clause.arity(), 2);
-        assert_eq!(my_clause.body(), &Goal::TruthValue(1.0));
+        assert_eq!(my_clause.body(), &Goal::TruthExpr(Expression::num(1.0)));
         assert_eq!(
             my_clause.truth_value(),
             Expression::Num(OrderedFloat::from(1.0))
@@ -861,7 +863,7 @@ mod tests {
     fn test_crisp_clause() {
         let clause = Clause {
             head: Symbol::new("my_clause", var_vec!["X", "Y"], var_vec!["Z"]),
-            body: Goal::TruthValue(1.0),
+            body: Goal::TruthExpr(Expression::num(1.0)),
         };
 
         assert_eq!(clause.arity(), 2);
@@ -899,17 +901,17 @@ mod tests {
     fn test_clause_database() {
         let clause1 = Clause {
             head: Symbol::new("clause", var_vec!["A"], vec![]),
-            body: Goal::TruthValue(1.0),
+            body: Goal::TruthExpr(Expression::num(1.0)),
         };
 
         let clause2 = Clause {
             head: Symbol::new("clause", var_vec!["A", "B"], vec![]),
-            body: Goal::TruthValue(0.0),
+            body: Goal::TruthExpr(Expression::num(0.0)),
         };
 
         let clause3 = Clause {
             head: Symbol::new("clause", var_vec!["X"], vec![]),
-            body: Goal::TruthValue(1.0),
+            body: Goal::TruthExpr(Expression::num(1.0)),
         };
 
         let db = ClauseDatabase::new(vec![clause1.clone(), clause2.clone(), clause3.clone()]);

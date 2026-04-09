@@ -184,14 +184,10 @@ impl Engine {
                 }
             }
 
-            Goal::TruthValueExpr(expr) => {
+            Goal::TruthExpr(expr) => {
                 let val = expr.evaluate(&state.env, &state.equiv)?;
-                self.handle_goal(Goal::TruthValue(*val), state)
-            }
 
-            Goal::TruthValue(t) => {
-                // Update the current truth value using min (conjunction)
-                let new_truth_value = state.truth_value.min(t);
+                let new_truth_value = state.truth_value.min(*val);
 
                 if new_truth_value < self.truth_threshold {
                     Ok(vec![]) // Below threshold
@@ -447,7 +443,7 @@ mod tests {
         // Set X=0.3 and Y=0.1
 
         let result = engine.handle_goal(
-            Goal::TruthValueExpr(Expression::Expr(
+            Goal::TruthExpr(Expression::Expr(
                 Box::new(Expression::variable("X")),
                 Box::new(Expression::variable("Y")),
                 ArithmeticOp::Add,

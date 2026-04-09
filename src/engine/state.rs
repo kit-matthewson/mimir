@@ -29,10 +29,8 @@ pub enum Goal {
     Relation(Variable, Variable, RelationalOp),
     /// Make a variable equivilant to some term.
     Assign(Variable, RHSTerm),
-    /// An expression that evaluates to a truth value.
-    TruthValueExpr(Expression),
-    /// A fuzzy truth value: 1 for true, 0 for false.
-    TruthValue(f64),
+    /// An expression that is evaluated to a truth value.
+    TruthExpr(Expression),
 }
 
 impl std::fmt::Display for Goal {
@@ -61,8 +59,7 @@ impl std::fmt::Display for Goal {
                 write!(f, "{} {} {}", v1, op_str, v2)
             }
             Goal::Assign(var, term) => write!(f, "{} := {:?}", var, term),
-            Goal::TruthValue(t) => write!(f, "{}", t),
-            Goal::TruthValueExpr(expr) => write!(f, "truth: {:?}", expr),
+            Goal::TruthExpr(expr) => write!(f, "truth: {:?}", expr),
         }
     }
 }
@@ -388,7 +385,7 @@ mod tests {
         // Test environment for query
         let query = Query {
             local_vars: vec![Variable::new("A"), Variable::new("B")],
-            goal: Goal::TruthValue(1.0),
+            goal: Goal::TruthExpr(Expression::num(1.0)),
         };
 
         let env = Environment::for_query(&query, &mut pgen);
@@ -425,17 +422,17 @@ mod tests {
     fn test_clause_db() {
         let clause1_a = Clause::new(
             Symbol::new("clause1", var_vec!["X"], vec![]),
-            Goal::TruthValue(1.0),
+            Goal::TruthExpr(Expression::num(1.0)),
         );
 
         let clause1_b = Clause::new(
             Symbol::new("clause1", var_vec!["Y"], vec![]),
-            Goal::TruthValue(0.0),
+            Goal::TruthExpr(Expression::num(0.0)),
         );
 
         let clause2 = Clause::new(
             Symbol::new("clause2", var_vec!["Z"], vec![]),
-            Goal::TruthValue(1.0),
+            Goal::TruthExpr(Expression::num(1.0)),
         );
 
         let program = vec![clause1_a.clone(), clause1_b.clone(), clause2.clone()];
