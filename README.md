@@ -44,5 +44,5 @@ cargo install just
 
 Then, you can run the tasks defined in the `justfile`:
 - `just run` - Runs the main program.
-- `just check` - Runs code checks including formatting and linting.
-- `just make-pdf` - Generate a PDFs for the project report.
+- `just check` - Runs all code checks including formatting and linting.
+- `just make-pdfs` - Generate PDFs for the project report, logbook, and poster.
