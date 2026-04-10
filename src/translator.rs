@@ -15,7 +15,7 @@ struct TranslationState {
 }
 
 /// Translates a single AST clause into the internal engine representation.
-pub fn translate(clause: ast::Clause) -> Result<engine::Clause, TranslationError> {
+pub fn translate_clause(clause: ast::Clause) -> Result<engine::Clause, TranslationError> {
     let mut state = TranslationState {
         temp_var_counter: 0,
         wildcard_counter: 0,
@@ -58,6 +58,28 @@ pub fn translate(clause: ast::Clause) -> Result<engine::Clause, TranslationError
     let head_symbol = engine::Symbol::new(&clause.head.functor, params, local_vars);
 
     Ok(engine::Clause::new(head_symbol, combined_body))
+}
+
+/// Translate a query (goal) from an AST goal to an engine query.
+pub fn translate_query(query: ast::Goal) -> Result<engine::Query, TranslationError> {
+    let mut state = TranslationState {
+        temp_var_counter: 0,
+        wildcard_counter: 0,
+    };
+
+    let goal = translate_goal(&query, &mut state)?;
+
+    let goal_vars = collect_body_variables(&[query]);
+    let temp_vars = (0..state.temp_var_counter).map(|i| format!("_T{}", i));
+    let wildcard_vars = (0..state.wildcard_counter).map(|i| format!("_W{}", i));
+
+    let local_vars: Vec<engine::Variable> = temp_vars
+        .chain(wildcard_vars)
+        .map(engine::Variable::new)
+        .chain(goal_vars.into_iter().map(engine::Variable::new))
+        .collect();
+
+    Ok(engine::Query { local_vars, goal })
 }
 
 /// Translate the clause head by replacing non-variable terms with temporary variables and generating unification goals.
@@ -356,7 +378,7 @@ fn translate_arith_op(op: &ast::ArithOp) -> engine::ArithmeticOp {
 }
 
 /// Collect all variables used in a body (AST goals).
-fn collect_body_variables(body: &[ast::Goal]) -> HashSet<String> {
+pub(crate) fn collect_body_variables(body: &[ast::Goal]) -> HashSet<String> {
     let mut vars = HashSet::new();
     for goal in body {
         match goal {
@@ -446,7 +468,7 @@ mod tests {
 
     fn translate_input(input: &str) -> engine::Clause {
         let (_, clause) = ast::Clause::parse(input).unwrap();
-        translate(clause).unwrap()
+        translate_clause(clause).unwrap()
     }
 
     #[test]
