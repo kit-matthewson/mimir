@@ -1,87 +1,80 @@
-use mimir::{engine::Query, var_vec};
 use ordered_float::OrderedFloat;
 
 fn main() -> Result<(), mimir::error::MimirError> {
-    let program = r"
-is_ten(X) :- X = 10.
-is_ten_or_five(X) :- X = 10.
-is_ten_or_five(X) :- X = 5.
-is_gt_ten(X) :- X > 10.
+    let fuzzy_program = r"
+trapezoidal(X, A, _, _, _, Y) :-
+    X < A,
+    Y = 0.
+trapezoidal(X, A, B, _, _, Y) :-
+    X >= A,
+    X <= B,
+    Y = (X - A) / (B - A).
+trapezoidal(X, _, B, C, _, Y) :-
+    X > B,
+    X < C,
+    Y = 1.
+trapezoidal(X, _, _, C, D, Y) :-
+    X >= C,
+    X <= D,
+    Y = (D - X) / (D - C).
+trapezoidal(X, _, _, _, D, Y) :-
+    X > D,
+    Y = 0.
+warm(X) :~
+    trapezoidal(X, 15, 20, 25, 30, Y),
+    Y.
     ";
 
-    println!("{}", program);
+    println!(
+        r"
+warm(X) :~
+    trapezoidal(X, 15, 20, 25, 30, Y),
+    Y.
+    "
+    );
 
-    let query = mimir::engine::Query {
-        local_vars: var_vec!["X"],
-        goal: mimir::engine::Goal::Check {
-            functor: "is_ten".to_string(),
-            params: mimir::var_vec!["X"],
-        },
-    };
-    execute(program, query)?;
-    println!();
+    loop {
+        print!("temperature = ");
+        std::io::Write::flush(&mut std::io::stdout()).unwrap(); // Ensure prompt is printed before input
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let input = input.trim();
+        let temp: f64 = input.parse().expect("Please enter a valid number");
 
-    let query = mimir::engine::Query {
-        local_vars: var_vec!["X"],
-        goal: mimir::engine::Goal::Check {
-            functor: "is_ten_or_five".to_string(),
-            params: var_vec!["X"],
-        },
-    };
-    execute(program, query)?;
-    println!();
+        let query = mimir::engine::Query {
+            local_vars: mimir::var_vec!["X"],
+            goal: mimir::engine::Goal::Conjunction(
+                Box::new(mimir::engine::Goal::Assign(
+                    mimir::engine::Variable::new("X"),
+                    mimir::engine::RHSTerm::Num(OrderedFloat::from(temp)),
+                )),
+                Box::new(mimir::engine::Goal::Check {
+                    functor: "warm".to_string(),
+                    params: mimir::var_vec!["X"],
+                }),
+            ),
+        };
 
-    let query = mimir::engine::Query {
-        local_vars: mimir::var_vec!["X"],
-        goal: mimir::engine::Goal::Conjunction(
-            Box::new(mimir::engine::Goal::Assign(
-                mimir::engine::Variable::new("X"),
-                mimir::engine::RHSTerm::Num(OrderedFloat::from(5.0)),
-            )),
-            Box::new(mimir::engine::Goal::Check {
-                functor: "is_gt_ten".to_string(),
-                params: mimir::var_vec!["X"],
-            }),
-        ),
-    };
-    execute(program, query)?;
+        let (_, user_program) = mimir::parser::program(fuzzy_program).unwrap();
+        let program = user_program
+            .into_iter()
+            .map(mimir::translator::translate)
+            .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(())
-}
+        let engine = mimir::engine::Engine::new(program, 0.01);
+        let solutions = engine.execute(query.clone())?;
 
-fn execute(program: &str, query: Query) -> Result<(), mimir::error::MimirError> {
-    let (_, user_program) = mimir::parser::program(program).unwrap();
-    let program = user_program
-        .into_iter()
-        .map(mimir::translator::translate)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // for clause in &program {
-    //     // println!("{}", clause);
-    // }
-
-    let engine = mimir::engine::Engine::new(program, 0.01);
-    let solutions = engine.execute(query.clone())?;
-
-    println!("{}", query);
-    if solutions.is_empty() {
-        println!("  false.");
-        return Ok(());
-    }
-
-    for solution in solutions.iter() {
-        print!("  ");
-        for var in &query.local_vars {
-            let value = solution.get(var)?;
-            print!("{} = {:?}", var, value);
-            if var != query.local_vars.last().unwrap() {
-                print!(", ");
+        if solutions.is_empty() {
+            println!("warm({}) ~ 0.00", temp);
+        } else {
+            for solution in solutions.iter() {
+                let truth = solution.truth_value();
+                println!("warm({}) ~ {:.2}", temp, truth);
             }
         }
+
         println!();
     }
-
-    Ok(())
 }
 
 #[cfg(test)]
