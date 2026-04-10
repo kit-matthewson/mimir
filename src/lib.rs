@@ -60,3 +60,95 @@ macro_rules! clause {
         )
     };
 }
+
+/// The response from executing a query, which may contain multiple solutions.
+pub struct Solution {
+    /// The variable bindings for this solution, mapping variables to their values.
+    bindings: Vec<(engine::Variable, engine::Value)>,
+    /// The truth value of the solution, which is a number between 0 and 1.
+    truth_value: f64,
+}
+
+impl Solution {
+    /// Get the variable bindings for this solution.
+    pub fn bindings(&self) -> &Vec<(engine::Variable, engine::Value)> {
+        &self.bindings
+    }
+
+    /// Get the truth value of this solution.
+    pub fn truth_value(&self) -> f64 {
+        self.truth_value
+    }
+}
+
+/// A Mini-Prolog program, on which queries can be executed.
+pub struct Program {
+    engine: engine::Engine,
+    program_ast: Vec<parser::ast::Clause>,
+}
+
+impl Program {
+    /// Parses and translates a Mini-Prolog program from a string, returning a `Program` that can be executed.
+    pub fn new(program: &str, truth_threshold: f64) -> Result<Self, MimirError> {
+        let clauses = parser::program(program)?;
+
+        let translated_clauses = clauses
+            .clone()
+            .into_iter()
+            .map(translator::translate_clause)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Program {
+            engine: engine::Engine::new(translated_clauses, truth_threshold),
+            program_ast: clauses,
+        })
+    }
+
+    /// Executes a query against the program, returning a vector of solutions.
+    pub fn query(&self, query: &str) -> Result<Vec<Solution>, MimirError> {
+        let goal = parser::query(query)?;
+
+        let internal_query = translator::translate_query(goal)?;
+
+        let engine_solutions = self
+            .engine
+            .execute(internal_query.clone())
+            .map_err(MimirError::from)?;
+
+        // Find the variables in the query so we know which bindings to return in the solutions
+        let mut vars = Vec::new();
+        for var in internal_query.local_vars {
+            if !var.name().starts_with("_") {
+                vars.push(var.clone());
+            }
+        }
+
+        let mut solutions = Vec::new();
+
+        for engine_solution in engine_solutions {
+            let mut bindings = Vec::new();
+            for var in &vars {
+                if let Some(value) = engine_solution.get(var) {
+                    bindings.push((var.clone(), value.clone()));
+                }
+            }
+
+            solutions.push(Solution {
+                bindings,
+                truth_value: engine_solution.truth_value(),
+            });
+        }
+
+        Ok(solutions)
+    }
+}
+
+impl std::fmt::Display for Program {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for clause in &self.program_ast {
+            writeln!(f, "{}", clause)?;
+        }
+
+        Ok(())
+    }
+}

@@ -20,6 +20,11 @@ impl Variable {
     pub fn new<T: Into<String>>(name: T) -> Self {
         Variable { name: name.into() }
     }
+
+    /// Get the name of this variable.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 impl From<&str> for Variable {
@@ -81,6 +86,23 @@ impl Value {
         match self {
             Value::Placeholder(id) => Some(*id),
             _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Number(n) => write!(f, "{}", n),
+            Value::Ground(functor, args) => {
+                let args_str = args
+                    .iter()
+                    .map(|arg| format!("{}", arg))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                write!(f, "{}({})", functor, args_str)
+            }
+            Value::Placeholder(id) => write!(f, "_{}", id),
         }
     }
 }

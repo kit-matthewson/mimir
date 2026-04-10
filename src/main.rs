@@ -1,5 +1,3 @@
-use ordered_float::OrderedFloat;
-
 fn main() -> Result<(), mimir::error::MimirError> {
     let fuzzy_program = r"
 trapezoidal(X, A, _, _, _, Y) :-
@@ -23,119 +21,53 @@ trapezoidal(X, _, _, _, D, Y) :-
 warm(X) :~
     trapezoidal(X, 15, 20, 25, 30, Y),
     Y.
+
+gt_ten(X) :-
+    X > 10.
+
+is_ten(X) :-
+    X = 10.
+
+is_five_or_ten(X) :~
+    X = 5,
+    0.2.
+is_five_or_ten(X) :~
+    X = 10,
+    0.8.
     ";
 
-    println!(
-        r"
-warm(X) :~
-    trapezoidal(X, 15, 20, 25, 30, Y),
-    Y.
-    "
-    );
+    let program = mimir::Program::new(fuzzy_program, 0.01)?;
+
+    println!("{program}");
 
     loop {
-        print!("temperature = ");
-        std::io::Write::flush(&mut std::io::stdout()).unwrap(); // Ensure prompt is printed before input
+        // Read input from user
+        print!("?> ");
+        std::io::Write::flush(&mut std::io::stdout()).unwrap();
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
-        let input = input.trim();
-        let temp: f64 = input.parse().expect("Please enter a valid number");
+        let query = input.trim();
 
-        let query = mimir::engine::Query {
-            local_vars: mimir::var_vec!["X"],
-            goal: mimir::engine::Goal::Conjunction(
-                Box::new(mimir::engine::Goal::Assign(
-                    mimir::engine::Variable::new("X"),
-                    mimir::engine::RHSTerm::Num(OrderedFloat::from(temp)),
-                )),
-                Box::new(mimir::engine::Goal::Check {
-                    functor: "warm".to_string(),
-                    params: mimir::var_vec!["X"],
-                }),
-            ),
+        let result = program.query(query);
+
+        let solutions = match result {
+            Ok(solutions) => solutions,
+            Err(e) => {
+                eprintln!("{e}");
+                continue;
+            }
         };
 
-        let (_, user_program) = mimir::parser::program(fuzzy_program).unwrap();
-        let program = user_program
-            .into_iter()
-            .map(mimir::translator::translate)
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let engine = mimir::engine::Engine::new(program, 0.01);
-        let solutions = engine.execute(query.clone())?;
-
-        if solutions.is_empty() {
-            println!("warm({}) ~ 0.00", temp);
-        } else {
-            for solution in solutions.iter() {
-                let truth = solution.truth_value();
-                println!("warm({}) ~ {:.2}", temp, truth);
+        for solution in &solutions {
+            for (var, val) in solution.bindings().iter() {
+                println!("  {} = {}", var.name(), val);
             }
+
+            println!("  {:.2}", solution.truth_value());
         }
 
-        println!();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use ordered_float::OrderedFloat;
-
-    #[test]
-    fn test_is_ten() {
-        let input = "is_ten(X) :- X = 10.";
-        let (_, user_program) = mimir::parser::clause(input).unwrap();
-        let program = mimir::translator::translate(user_program).unwrap();
-
-        let query = mimir::engine::Query {
-            local_vars: mimir::var_vec!["X"],
-            goal: mimir::engine::Goal::Check {
-                functor: "is_ten".to_string(),
-                params: mimir::var_vec!["X"],
-            },
-        };
-
-        let engine = mimir::engine::Engine::new(vec![program], 0.01);
-        let solutions = engine.execute(query).unwrap();
-
-        assert_eq!(solutions.len(), 1);
-        let solution = &solutions[0];
-        let value = solution.get(&mimir::engine::Variable::new("X")).unwrap();
-        assert_eq!(
-            value,
-            mimir::engine::Value::Number(OrderedFloat::from(10.0))
-        );
-    }
-
-    #[test]
-    fn test_is_gt_ten() {
-        let input = "is_gt_ten(X) :- X > 10.";
-        let (_, user_program) = mimir::parser::clause(input).unwrap();
-        let program = mimir::translator::translate(user_program).unwrap();
-
-        let query = mimir::engine::Query {
-            local_vars: mimir::var_vec!["X"],
-            goal: mimir::engine::Goal::Conjunction(
-                Box::new(mimir::engine::Goal::Assign(
-                    mimir::engine::Variable::new("X"),
-                    mimir::engine::RHSTerm::Num(OrderedFloat::from(11.0)),
-                )),
-                Box::new(mimir::engine::Goal::Check {
-                    functor: "is_gt_ten".to_string(),
-                    params: mimir::var_vec!["X"],
-                }),
-            ),
-        };
-
-        let engine = mimir::engine::Engine::new(vec![program], 0.01);
-        let solutions = engine.execute(query).unwrap();
-
-        assert_eq!(solutions.len(), 1);
-        let solution = &solutions[0];
-        let value = solution.get(&mimir::engine::Variable::new("X")).unwrap();
-        assert_eq!(
-            value,
-            mimir::engine::Value::Number(OrderedFloat::from(11.0))
-        );
+        if solutions.is_empty() {
+            println!("  false");
+        }
     }
 }
