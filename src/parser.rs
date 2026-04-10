@@ -71,7 +71,10 @@ pub trait Parseable: std::fmt::Display + Sized {
 
 impl Parseable for ast::Clause {
     /// A clause has a head (a compound) and an optional body (a list of terms).
-    /// The head and body are separated by ':-', and the body terms are separated by commas.
+    /// The head and body are separated by ':-' in crisp clauses, and the body terms are separated by commas.
+    ///
+    /// Fuzzy clauses can be denoted by ':~' instead of ':-', and have a fuzzy expression at the end of the body.
+    ///
     /// Clauses must end with a period.
     ///
     /// # Example
@@ -82,18 +85,65 @@ impl Parseable for ast::Clause {
     ///
     /// assert_eq!(clause.to_string(), input);
     /// ```
+    ///
+    /// ```
+    /// # use mimir::parser::{ast, Parseable};
+    /// let input = "fuzzy(X) :~ (X - 0.2).";
+    /// let (_, clause) = ast::Clause::parse(input).unwrap();
+    ///
+    /// assert_eq!(clause.to_string(), input);
+    /// ```
     fn parse(input: &str) -> nom::IResult<&str, Self> {
         let (input, head) = ast::Compound::parse(input)?;
-        let (input, body) = opt((
-            ws(tag(":-")),
-            separated_list1(ws(tag(",")), ast::Goal::parse),
+
+        let (input, (body, fuzzy_expr)) = alt((
+            // Fuzzy clause
+            |input| {
+                // All fuzzy clauses have a :~, even if they don't have a body (i.e., they are fuzzy facts)
+                let (input, _) = ws(tag(":~")).parse(input)?;
+
+                // If there is a body it must have a fuzzy expression at the end
+                let (input, rest) = (
+                    opt((
+                        separated_list1(ws(tag(",")), ast::Goal::parse),
+                        ws(tag(",")),
+                    )),
+                    ws(ast::ArithExpr::parse),
+                    ws(tag(".")),
+                )
+                    .parse(input)?;
+
+                let body = rest.0.map(|(body, _)| body).unwrap_or_default();
+                let fuzzy_expr = rest.1;
+
+                Ok((input, (body, Some(fuzzy_expr))))
+            },
+            // Crisp clause
+            |input| {
+                let (input, body) = (
+                    opt((
+                        ws(tag(":-")),
+                        separated_list1(ws(tag(",")), ast::Goal::parse),
+                    )),
+                    ws(tag(".")),
+                )
+                    .parse(input)?;
+
+                let body = body.0.map(|(_, body)| body).unwrap_or_default();
+
+                Ok((input, (body, None)))
+            },
         ))
         .parse(input)?;
-        let (input, _) = tag(".").parse(input)?;
 
-        let body = body.map_or(vec![], |(_, terms)| terms);
-
-        Ok((input, Self { head, body }))
+        Ok((
+            input,
+            Self {
+                head,
+                body,
+                fuzzy_expr,
+            },
+        ))
     }
 }
 
@@ -288,8 +338,10 @@ impl Parseable for ast::RelationalOp {
     fn parse(input: &str) -> nom::IResult<&str, Self> {
         alt((
             value(Self::LessThanEqual, tag("=<")),
+            value(Self::LessThanEqual, tag("<=")),
             value(Self::LessThan, tag("<")),
             value(Self::GreaterThanEqual, tag(">=")),
+            value(Self::GreaterThanEqual, tag("=>")),
             value(Self::GreaterThan, tag(">")),
             value(Self::Equal, tag("==")),
             value(Self::NotEqual, tag("\\=")),
@@ -430,11 +482,58 @@ mod tests {
     #[test]
     fn test_clause_parsing_invalid() {
         let cases = vec![
-            "parent(X, Y) father(X, Y), mother(X, Y).", // Missing ':-'
-            "parent(X, Y) :- father(X, Y) mother(X, Y).", // Missing comma
-            "parent(X, Y) :- father(X, Y), mother(X, Y)", // Missing period
-            "parent(X, Y) :- .",                        // Empty body
-            "parent(X, Y)) :- father(X, Y).",           // Extra parenthesis
+            "parent(X, Y) f(X, Y), m(X, Y).",   // Missing ':-'
+            "parent(X, Y) :- f(X, Y) m(X, Y).", // Missing comma
+            "parent(X, Y) :- f(X, Y), m(X, Y)", // Missing period
+            "parent(X, Y) :- .",                // Empty body
+            "parent(X, Y)) :- f(X, Y).",        // Extra parenthesis
+            "parent(X, Y :- f(X, Y).",          // Missing parenthesis
+            "parentX, Y) :- f(X, Y).",          // Missing parenthesis
+        ];
+
+        for input in cases {
+            let result = ast::Clause::parse(input);
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn test_fuzzy_clause_parsing() {
+        let input = "fuzzy(X) :~ 0.";
+        let (remaining, clause) = ast::Clause::parse(input).unwrap();
+        assert_eq!(clause.to_string(), input);
+        assert_eq!(remaining, "");
+
+        let input = "fuzzy(X) :~ (X - 0.2).";
+        let (remaining, clause) = ast::Clause::parse(input).unwrap();
+        assert_eq!(clause.to_string(), input);
+        assert_eq!(remaining, "");
+
+        let input = "fuzzy(X) :~ X - 0.2.";
+        let (remaining, clause) = ast::Clause::parse(input).unwrap();
+        assert_eq!(clause.to_string(), "fuzzy(X) :~ (X - 0.2).");
+        assert_eq!(remaining, "");
+
+        let input = "fuzzy(A, B, C) :~ func(A, B), A > B, ((C * B) + 0.2).";
+        let (remaining, clause) = ast::Clause::parse(input).unwrap();
+        assert_eq!(clause.to_string(), input);
+        assert_eq!(remaining, "");
+
+        let input = "trapezoidal(X, A, B, _, _) :~ X >= A, X <= B, 0.2.";
+        let (remaining, clause) = ast::Clause::parse(input).unwrap();
+        assert_eq!(clause.to_string(), input);
+        assert_eq!(remaining, "");
+    }
+
+    #[test]
+    fn test_fuzzy_clause_parsing_invalid() {
+        let cases = vec![
+            "fuzzy(X) (X - 0.2).",         // Missing ':~'
+            "fuzzy(X) :~ .",               // Missing fuzzy expression
+            "fuzzy(X) :~ func(X).",        // Missing fuzzy expression
+            "fuzzy(X) :~ func(X), A > B.", // Missing fuzzy expression
+            "fuzzy(X) :~ X - 0.2",         // Missing period
+            "fuzzy(X) :~, X - 0.2.",       // Comma after ':~' but no body
         ];
 
         for input in cases {
@@ -636,8 +735,10 @@ mod tests {
             ("\\=", ast::RelationalOp::NotEqual),
             ("<", ast::RelationalOp::LessThan),
             ("=<", ast::RelationalOp::LessThanEqual),
+            ("<=", ast::RelationalOp::LessThanEqual),
             (">", ast::RelationalOp::GreaterThan),
             (">=", ast::RelationalOp::GreaterThanEqual),
+            ("=>", ast::RelationalOp::GreaterThanEqual),
         ];
 
         for (input, expected) in cases {
@@ -648,7 +749,7 @@ mod tests {
 
     #[test]
     fn test_relational_op_parsing_invalid() {
-        let cases = vec!["=", "!=", "=>", "<>", "abc"];
+        let cases = vec!["=", "!=", "<>", "abc"];
 
         for input in cases {
             let result = ast::RelationalOp::parse(input);

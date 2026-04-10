@@ -25,18 +25,16 @@ pub fn translate(clause: ast::Clause) -> Result<engine::Clause, TranslationError
     let (params, head_unification_goals) = translate_clause_head(&clause.head, &mut state)?;
 
     // Translate body goals, potentially creating more temporary variables
-    let body_goals = translate_clause_body(&clause.body, &mut state)?;
+    let body_goals = translate_clause_body(&clause.body, &clause.fuzzy_expr, &mut state)?;
 
-    // Combine head unification goals with body
-    // We start with a 'true' goal so that facts work correctly
+    // Combine head unification goals with body by prefixing generated
+    // assignments in front of the translated body goal.
     let combined_body = head_unification_goals
         .into_iter()
-        .chain(std::iter::once(body_goals))
-        .map(Box::new)
-        .fold(
-            engine::Goal::TruthExpr(engine::Expression::num(1.0)),
-            |acc, goal| engine::Goal::Conjunction(goal, Box::new(acc)),
-        );
+        .rev()
+        .fold(body_goals, |acc, goal| {
+            engine::Goal::Conjunction(Box::new(goal), Box::new(acc))
+        });
 
     // Create local and wild variable names for the clause
     let temp_vars = (0..state.temp_var_counter).map(|i| format!("_T{}", i));
@@ -107,23 +105,38 @@ fn translate_clause_head(
 /// Translate the clause body goals, handling any necessary temporary variable generation.
 fn translate_clause_body(
     body: &[ast::Goal],
+    fuzzy_expr: &Option<ast::ArithExpr>,
     state: &mut TranslationState,
 ) -> Result<engine::Goal, TranslationError> {
+    let fuzzy_goal = fuzzy_expr
+        .as_ref()
+        .map(|expr| engine::Goal::TruthExpr(translate_arith_expr(expr, state)));
+
     if body.is_empty() {
-        return Ok(engine::Goal::TruthExpr(engine::Expression::num(1.0)));
+        return Ok(
+            fuzzy_goal.unwrap_or_else(|| engine::Goal::TruthExpr(engine::Expression::num(1.0)))
+        );
     }
 
     // Convert each goal and combine with conjunction
     let mut goals_iter = body.iter();
     let first_goal = translate_goal(goals_iter.next().expect("body is not empty"), state)?;
 
-    goals_iter.try_fold(first_goal, |acc, goal| {
-        let translated = translate_goal(goal, state)?;
-        Ok(engine::Goal::Conjunction(
-            Box::new(acc),
-            Box::new(translated),
-        ))
-    })
+    goals_iter
+        .try_fold(first_goal, |acc, goal| {
+            let translated = translate_goal(goal, state)?;
+            Ok(engine::Goal::Conjunction(
+                Box::new(acc),
+                Box::new(translated),
+            ))
+        })
+        .map(|combined_body| {
+            if let Some(fuzzy_goal) = fuzzy_goal {
+                engine::Goal::Conjunction(Box::new(combined_body), Box::new(fuzzy_goal))
+            } else {
+                combined_body
+            }
+        })
 }
 
 /// Translate a single AST goal to an engine goal.
@@ -158,13 +171,23 @@ fn translate_goal(
         }
         ast::Goal::Check(compound) => {
             let functor = compound.functor.clone();
-            let params: Vec<engine::Variable> = compound
-                .params
-                .iter()
-                .map(|term| term_to_variable(term, state))
-                .collect();
+            let mut params = Vec::new();
+            let mut pre_goals = Vec::new();
 
-            Ok(engine::Goal::Check { functor, params })
+            // When a compound term is used as a goal, we need to ensure all its parameters are variables.
+            // Produce assignment goals for non-variable parameters
+            for term in &compound.params {
+                let (var, param_pre_goals) = term_to_variable_for_relation(term, state)?;
+                params.push(var);
+                pre_goals.extend(param_pre_goals);
+            }
+
+            let mut check_goal = engine::Goal::Check { functor, params };
+            for pre_goal in pre_goals.into_iter().rev() {
+                check_goal = engine::Goal::Conjunction(Box::new(pre_goal), Box::new(check_goal));
+            }
+
+            Ok(check_goal)
         }
     }
 }
@@ -418,813 +441,288 @@ fn collect_arith_expr_variables(expr: &ast::ArithExpr, vars: &mut HashSet<String
 
 #[cfg(test)]
 mod tests {
-    use ordered_float::OrderedFloat;
-
     use super::*;
+    use crate::parser::Parseable;
 
-    /// Helper to create an atom term
-    fn atom(name: &str) -> ast::Term {
-        ast::Term::Atom(ast::Atom {
-            name: name.to_string(),
-        })
-    }
-
-    /// Helper to create a variable term
-    fn var(name: &str) -> ast::Term {
-        ast::Term::Var(ast::Variable::Var(name.to_string()))
-    }
-
-    /// Helper to create a wildcard term
-    fn wildcard() -> ast::Term {
-        ast::Term::Var(ast::Variable::Wildcard)
-    }
-
-    /// Helper to create a number term
-    fn num(n: f64) -> ast::Term {
-        ast::Term::Num(OrderedFloat::from(n))
-    }
-
-    /// Helper to create a compound term
-    fn compound(functor: &str, params: Vec<ast::Term>) -> ast::Term {
-        ast::Term::Compound(ast::Compound {
-            functor: functor.to_string(),
-            params,
-        })
+    fn translate_input(input: &str) -> engine::Clause {
+        let (_, clause) = ast::Clause::parse(input).unwrap();
+        translate(clause).unwrap()
     }
 
     #[test]
-    fn test_simple_fact() {
-        // parent(alice).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "parent".to_string(),
-                params: vec![atom("alice")],
-            },
-            body: vec![],
-        };
+    fn translates_fuzzy_fact_with_head_normalisation() {
+        let translated = translate_input("fuzzy(foo) :~ 0.8.");
 
-        let translated = translate(clause).unwrap();
-
-        // Head should have one parameter (a temp variable)
-        assert_eq!(translated.head().functor(), "parent");
-        assert_eq!(translated.head().parameters().len(), 1);
-
-        // Should have temp variables in local_vars
-        assert!(!translated.head().local_vars().is_empty());
-    }
-
-    #[test]
-    fn test_fact_with_variable() {
-        // parent(X).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "parent".to_string(),
-                params: vec![var("X")],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        assert_eq!(translated.head().functor(), "parent");
-        assert_eq!(translated.head().parameters().len(), 1);
-        assert_eq!(translated.head().parameters()[0].to_string(), "X");
-    }
-
-    #[test]
-    fn test_rule_with_body() {
-        // child(X) :- parent(X).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "child".to_string(),
-                params: vec![var("X")],
-            },
-            body: vec![ast::Goal::Check(ast::Compound {
-                functor: "parent".to_string(),
-                params: vec![var("X")],
-            })],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        assert_eq!(translated.head().functor(), "child");
-        assert_eq!(translated.head().parameters().len(), 1);
-    }
-
-    #[test]
-    fn test_list_desugaring_empty() {
-        // test([]).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![ast::Term::List(vec![])],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // Empty list should desugar to 'nil'
-        assert_eq!(translated.head().functor(), "test");
-    }
-
-    #[test]
-    fn test_list_desugaring_single_element() {
-        // test([1]).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![ast::Term::List(vec![num(1.0)])],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // [1] should desugar to .(1, nil)
-        assert_eq!(translated.head().functor(), "test");
-    }
-
-    #[test]
-    fn test_list_desugaring_multiple_elements() {
-        // test([1, 2, 3]).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![ast::Term::List(vec![num(1.0), num(2.0), num(3.0)])],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // [1,2,3] should desugar to .(1, .(2, .(3, nil)))
-        assert_eq!(translated.head().functor(), "test");
-    }
-
-    #[test]
-    fn test_list_with_variables() {
-        // test([X, Y, Z]).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![ast::Term::List(vec![var("X"), var("Y"), var("Z")])],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        assert_eq!(translated.head().functor(), "test");
-    }
-
-    #[test]
-    fn test_nested_compound_terms() {
-        // test(foo(bar(baz))).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![compound("foo", vec![compound("bar", vec![atom("baz")])])],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        assert_eq!(translated.head().functor(), "test");
-        assert_eq!(translated.head().parameters().len(), 1);
-    }
-
-    #[test]
-    fn test_multiple_head_arguments() {
-        // test(alice, bob, charlie).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![atom("alice"), atom("bob"), atom("charlie")],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        assert_eq!(translated.head().functor(), "test");
-        assert_eq!(translated.head().parameters().len(), 3);
-
-        // Should generate 3 temp variables
-        assert!(translated.head().local_vars().len() >= 3);
-    }
-
-    #[test]
-    fn test_mixed_head_arguments() {
-        // test(X, alice, Y, 42).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![var("X"), atom("alice"), var("Y"), num(42.0)],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        assert_eq!(translated.head().functor(), "test");
-        assert_eq!(translated.head().parameters().len(), 4);
-    }
-
-    #[test]
-    fn test_wildcard_variables() {
-        // test(_, _).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![wildcard(), wildcard()],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        assert_eq!(translated.head().functor(), "test");
-        assert_eq!(translated.head().parameters().len(), 2);
-
-        // Each wildcard should get a unique internal variable
-        let param1 = translated.head().parameters()[0].to_string();
-        let param2 = translated.head().parameters()[1].to_string();
-        assert_ne!(param1, param2);
-    }
-
-    #[test]
-    fn test_relational_operators() {
-        // test(X) :- X < 10.
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![var("X")],
-            },
-            body: vec![ast::Goal::Relation(
-                var("X"),
-                ast::RelationalOp::LessThan,
-                num(10.0),
-            )],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        assert_eq!(translated.head().functor(), "test");
-
-        // The constant `10` in relation must be translated through a temp var assignment.
-        match translated.body() {
-            engine::Goal::Conjunction(left, _) => match left.as_ref() {
-                engine::Goal::Conjunction(assign, relation) => {
-                    assert!(matches!(
-                        assign.as_ref(),
-                        engine::Goal::Assign(_, engine::RHSTerm::Num(n)) if *n == OrderedFloat::from(10.0)
-                    ));
-                    assert!(matches!(
-                        relation.as_ref(),
-                        engine::Goal::Relation(_, _, engine::RelationalOp::LessThan)
-                    ));
-                }
-                _ => panic!("Expected relation goal to include assignment pre-goal"),
-            },
-            _ => panic!("Expected top-level conjunction"),
-        }
-    }
-
-    #[test]
-    fn test_assignment_in_body() {
-        // test(X) :- Y = X + 1.
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![var("X")],
-            },
-            body: vec![ast::Goal::Assign(
-                ast::Variable::Var("Y".to_string()),
-                ast::RHS::Expr(ast::ArithExpr::Expr(
-                    Box::new(ast::ArithExpr::Var(ast::Variable::Var("X".to_string()))),
-                    ast::ArithOp::Add,
-                    Box::new(ast::ArithExpr::Num(OrderedFloat::from(1.0))),
+        let expected = engine::Clause::new(
+            engine::Symbol::new(
+                "fuzzy",
+                vec![engine::Variable::new("_T0")],
+                vec![engine::Variable::new("_T0")],
+            ),
+            engine::Goal::Conjunction(
+                Box::new(engine::Goal::Assign(
+                    engine::Variable::new("_T0"),
+                    engine::RHSTerm::Sym(engine::Symbol::new("foo", vec![], vec![])),
                 )),
-            )],
-        };
+                Box::new(engine::Goal::TruthExpr(engine::Expression::num(0.8))),
+            ),
+        );
 
-        let translated = translate(clause).unwrap();
-
-        assert_eq!(translated.head().functor(), "test");
+        assert_eq!(translated, expected);
+        assert_eq!(translated.truth_value(), engine::Expression::num(0.8));
     }
 
     #[test]
-    fn test_multiple_body_goals() {
-        // ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "ancestor".to_string(),
-                params: vec![var("X"), var("Y")],
-            },
-            body: vec![
-                ast::Goal::Check(ast::Compound {
-                    functor: "parent".to_string(),
-                    params: vec![var("X"), var("Z")],
-                }),
-                ast::Goal::Check(ast::Compound {
-                    functor: "ancestor".to_string(),
-                    params: vec![var("Z"), var("Y")],
-                }),
-            ],
-        };
+    fn translates_fuzzy_clause_with_body_and_local_variable() {
+        let translated = translate_input("score(X) :~ Y > 3, X + Y.");
 
-        let translated = translate(clause).unwrap();
-
-        assert_eq!(translated.head().functor(), "ancestor");
-        assert_eq!(translated.head().parameters().len(), 2);
-    }
-
-    #[test]
-    fn test_goal_conjunction_structure() {
-        // test(X) :- a(X), b(X), c(X).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![var("X")],
-            },
-            body: vec![
-                ast::Goal::Check(ast::Compound {
-                    functor: "a".to_string(),
-                    params: vec![var("X")],
-                }),
-                ast::Goal::Check(ast::Compound {
-                    functor: "b".to_string(),
-                    params: vec![var("X")],
-                }),
-                ast::Goal::Check(ast::Compound {
-                    functor: "c".to_string(),
-                    params: vec![var("X")],
-                }),
-            ],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // Body should be nested conjunctions
-        assert_eq!(translated.head().functor(), "test");
-    }
-
-    #[test]
-    fn test_temp_variable_uniqueness() {
-        // test(foo, bar, baz) :- check(foo).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![atom("foo"), atom("bar"), atom("baz")],
-            },
-            body: vec![ast::Goal::Check(ast::Compound {
-                functor: "check".to_string(),
-                params: vec![atom("foo")],
-            })],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // Should generate unique temp variables for each atom in head
-        assert!(translated.head().local_vars().len() >= 3);
-
-        // Check that all temp variables have unique names
-        let var_names: std::collections::HashSet<_> = translated
-            .head()
-            .local_vars()
-            .iter()
-            .map(|v| v.to_string())
-            .collect();
-
-        assert_eq!(translated.head().local_vars().len(), var_names.len());
-    }
-
-    #[test]
-    fn test_nested_list_in_compound() {
-        // test(foo([1, 2])).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![compound(
-                    "foo",
-                    vec![ast::Term::List(vec![num(1.0), num(2.0)])],
-                )],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // Lists should be desugared even when nested
-        assert_eq!(translated.head().functor(), "test");
-    }
-
-    #[test]
-    fn test_list_in_body_goal() {
-        // test(X) :- member(X, [1, 2, 3]).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![var("X")],
-            },
-            body: vec![ast::Goal::Check(ast::Compound {
-                functor: "member".to_string(),
-                params: vec![
-                    var("X"),
-                    ast::Term::List(vec![num(1.0), num(2.0), num(3.0)]),
-                ],
-            })],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // Lists in body should also be desugared
-        assert_eq!(translated.head().functor(), "test");
-    }
-
-    #[test]
-    fn test_complex_nested_structure() {
-        // test(foo(bar([X, Y]), baz(Z))).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![compound(
-                    "foo",
-                    vec![
-                        compound("bar", vec![ast::Term::List(vec![var("X"), var("Y")])]),
-                        compound("baz", vec![var("Z")]),
-                    ],
-                )],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        assert_eq!(translated.head().functor(), "test");
-        assert_eq!(translated.head().parameters().len(), 1);
-    }
-
-    #[test]
-    fn test_arithmetic_expressions() {
-        // test(X, Y) :- Z = X + Y * 2.
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![var("X"), var("Y")],
-            },
-            body: vec![ast::Goal::Assign(
-                ast::Variable::Var("Z".to_string()),
-                ast::RHS::Expr(ast::ArithExpr::Expr(
-                    Box::new(ast::ArithExpr::Var(ast::Variable::Var("X".to_string()))),
-                    ast::ArithOp::Add,
-                    Box::new(ast::ArithExpr::Expr(
-                        Box::new(ast::ArithExpr::Var(ast::Variable::Var("Y".to_string()))),
-                        ast::ArithOp::Multiply,
-                        Box::new(ast::ArithExpr::Num(OrderedFloat::from(2.0))),
+        let expected = engine::Clause::new(
+            engine::Symbol::new(
+                "score",
+                vec![engine::Variable::new("X")],
+                vec![engine::Variable::new("_T0"), engine::Variable::new("Y")],
+            ),
+            engine::Goal::Conjunction(
+                Box::new(engine::Goal::Conjunction(
+                    Box::new(engine::Goal::Assign(
+                        engine::Variable::new("_T0"),
+                        engine::RHSTerm::Num(ordered_float::OrderedFloat::from(3.0)),
+                    )),
+                    Box::new(engine::Goal::Relation(
+                        engine::Variable::new("Y"),
+                        engine::Variable::new("_T0"),
+                        engine::RelationalOp::GreaterThan,
                     )),
                 )),
-            )],
-        };
+                Box::new(engine::Goal::TruthExpr(engine::Expression::binary(
+                    engine::Expression::variable("X"),
+                    engine::Expression::variable("Y"),
+                    engine::ArithmeticOp::Add,
+                ))),
+            ),
+        );
 
-        let translated = translate(clause).unwrap();
-
-        assert_eq!(translated.head().functor(), "test");
-        assert_eq!(translated.head().parameters().len(), 2);
-    }
-
-    #[test]
-    fn test_structure_in_head_generates_unification() {
-        // fact(42).
-        // Should translate to: fact(_T0) :- _T0 := 42.
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "fact".to_string(),
-                params: vec![num(42.0)],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // Head parameter should be a temp variable
-        assert_eq!(translated.head().parameters().len(), 1);
-        let param_name = translated.head().parameters()[0].to_string();
-        assert!(param_name.starts_with("_T"));
-
-        // Body should contain an assignment goal for the temp variable
-        // The body structure is: Bool(true) AND (Assign(_T0, 42) AND Bool(true))
-        // The fold creates: Conjunction(body_goals, Conjunction(unif_goal, Bool(true)))
-        match translated.body() {
-            engine::Goal::Conjunction(left, right) => {
-                // Left should be Bool(true) from the body
-                match left.as_ref() {
-                    engine::Goal::TruthExpr(_) => {}
-                    _ => panic!("Expected TruthExpr(_) on left"),
-                }
-                // Right should contain the unification goals
-                match right.as_ref() {
-                    engine::Goal::Conjunction(unif_left, unif_right) => {
-                        // This should be our Assign goal
-                        match unif_left.as_ref() {
-                            engine::Goal::Assign(var, rhs_term) => {
-                                assert_eq!(var.to_string(), param_name);
-                                match rhs_term {
-                                    engine::RHSTerm::Num(n) => {
-                                        assert_eq!(*n, OrderedFloat::from(42.0))
-                                    }
-                                    _ => panic!("Expected a number RHS term"),
-                                }
-                            }
-                            _ => panic!("Expected an Assign goal"),
-                        }
-                        // The innermost right should be Bool(true)
-                        match unif_right.as_ref() {
-                            engine::Goal::TruthExpr(_) => {}
-                            _ => panic!("Expected TruthExpr(_) innermost"),
-                        }
-                    }
-                    _ => panic!("Expected a nested Conjunction"),
-                }
-            }
-            _ => panic!("Expected a Conjunction goal"),
-        }
-    }
-
-    #[test]
-    fn test_multiple_structures_in_head_generate_multiple_unifications() {
-        // test(alice, 42, bob).
-        // Should translate to: test(_T0, _T1, _T2) :- _T0 := alice, _T1 := 42, _T2 := bob.
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![atom("alice"), num(42.0), atom("bob")],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // All head parameters should be temp variables
-        assert_eq!(translated.head().parameters().len(), 3);
-        for param in translated.head().parameters() {
-            assert!(param.to_string().starts_with("_T"));
-        }
-
-        // Body should contain three assignment goals
-        // Structure: Bool(true) AND (Assign1 AND (Assign2 AND (Assign3 AND Bool(true))))
-        let mut goal_count = 0;
-
-        // Skip the outermost Bool(true) from body_goals
-        if let engine::Goal::Conjunction(_, right) = translated.body() {
-            let mut current = right.as_ref();
-
-            // Walk through the nested conjunctions
-            loop {
-                match current {
-                    engine::Goal::Conjunction(left, right_inner) => {
-                        if matches!(left.as_ref(), engine::Goal::Assign(_, _)) {
-                            goal_count += 1;
-                        }
-                        current = right_inner.as_ref();
-                    }
-                    engine::Goal::TruthExpr(_) => break,
-                    engine::Goal::Assign(_, _) => {
-                        goal_count += 1;
-                        break;
-                    }
-                    _ => break,
-                }
-            }
-        }
-
+        assert_eq!(translated, expected);
         assert_eq!(
-            goal_count, 3,
-            "Expected 3 assignment goals for the 3 structures"
+            translated.truth_value(),
+            engine::Expression::binary(
+                engine::Expression::variable("X"),
+                engine::Expression::variable("Y"),
+                engine::ArithmeticOp::Add,
+            )
         );
     }
 
     #[test]
-    fn test_compound_structure_in_head() {
-        // test(foo(bar)).
-        // Should translate to: test(_T0) :- _T0 := foo(_T1), _T1 := bar.
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![compound("foo", vec![atom("bar")])],
-            },
-            body: vec![],
-        };
+    fn translates_fuzzy_clause_body_before_truth_expression() {
+        let translated = translate_input("weighted(X) :~ helper(X), X - 0.25.");
 
-        let translated = translate(clause).unwrap();
-
-        // Head should have one temp variable parameter
-        assert_eq!(translated.head().parameters().len(), 1);
-        assert!(
-            translated.head().parameters()[0]
-                .to_string()
-                .starts_with("_T")
-        );
-
-        // Should have multiple temp variables (one for outer compound, one for inner atom)
-        assert!(translated.head().local_vars().len() >= 2);
-    }
-
-    #[test]
-    fn test_mixed_variables_and_structures() {
-        // test(X, alice, Y).
-        // Should translate to: test(X, _T0, Y) :- _T0 := alice.
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![var("X"), atom("alice"), var("Y")],
-            },
-            body: vec![],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // First and third parameters should be X and Y
-        assert_eq!(translated.head().parameters()[0].to_string(), "X");
-        assert_eq!(translated.head().parameters()[2].to_string(), "Y");
-
-        // Second parameter should be a temp variable
-        assert!(
-            translated.head().parameters()[1]
-                .to_string()
-                .starts_with("_T")
-        );
-
-        // Should have exactly one temp variable in local_vars
-        let temp_vars: Vec<_> = translated
-            .head()
-            .local_vars()
-            .iter()
-            .filter(|v| v.to_string().starts_with("_T"))
-            .collect();
-        assert_eq!(temp_vars.len(), 1);
-    }
-
-    #[test]
-    fn test_structure_with_body_goals() {
-        // test(42) :- check(x).
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![num(42.0)],
-            },
-            body: vec![ast::Goal::Check(ast::Compound {
-                functor: "check".to_string(),
-                params: vec![atom("x")],
-            })],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // Actual structure: Conjunction(Check, Conjunction(Assign, Bool))
-        match translated.body() {
-            engine::Goal::Conjunction(left, right) => {
-                // Left should be the Check goal (body is folded into the structure)
-                assert!(matches!(left.as_ref(), engine::Goal::Check { .. }));
-
-                // Right should contain the head unification goals
-                match right.as_ref() {
-                    engine::Goal::Conjunction(assign_goal, _) => {
-                        assert!(matches!(assign_goal.as_ref(), engine::Goal::Assign(_, _)));
-                    }
-                    _ => panic!("Expected unification goals in conjunction"),
-                }
-            }
-            _ => panic!("Expected top-level conjunction"),
-        }
-    }
-
-    #[test]
-    fn test_body_only_variables_in_local_vars() {
-        // test() :- foo(X).
-        // X is used in body but not in head, should be in local_vars
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![],
-            },
-            body: vec![ast::Goal::Check(ast::Compound {
-                functor: "foo".to_string(),
-                params: vec![var("X")],
-            })],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // X should be in local_vars since it's not in head parameters
-        let local_var_names: std::collections::HashSet<_> = translated
-            .head()
-            .local_vars()
-            .iter()
-            .map(|v| v.to_string())
-            .collect();
-
-        assert!(local_var_names.contains("X"), "X should be in local_vars");
-    }
-
-    #[test]
-    fn test_body_variable_not_in_head() {
-        // test(X) :- Y = X + 1.
-        // X is in head, Y is only in body - Y should be in local_vars
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![var("X")],
-            },
-            body: vec![ast::Goal::Assign(
-                ast::Variable::Var("Y".to_string()),
-                ast::RHS::Expr(ast::ArithExpr::Expr(
-                    Box::new(ast::ArithExpr::Var(ast::Variable::Var("X".to_string()))),
-                    ast::ArithOp::Add,
-                    Box::new(ast::ArithExpr::Num(OrderedFloat::from(1.0))),
-                )),
-            )],
-        };
-
-        let translated = translate(clause).unwrap();
-
-        // X should be in parameters
-        assert_eq!(translated.head().parameters()[0].to_string(), "X");
-
-        // Y should be in local_vars (not in parameters)
-        let local_var_names: std::collections::HashSet<_> = translated
-            .head()
-            .local_vars()
-            .iter()
-            .map(|v| v.to_string())
-            .collect();
-
-        assert!(local_var_names.contains("Y"), "Y should be in local_vars");
-    }
-
-    #[test]
-    fn test_multiple_body_variables() {
-        // test(X) :- foo(Y, Z), Y = X + 1.
-        // Y and Z are in body but not in head
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![var("X")],
-            },
-            body: vec![
-                ast::Goal::Check(ast::Compound {
-                    functor: "foo".to_string(),
-                    params: vec![var("Y"), var("Z")],
+        let expected = engine::Clause::new(
+            engine::Symbol::new("weighted", vec![engine::Variable::new("X")], vec![]),
+            engine::Goal::Conjunction(
+                Box::new(engine::Goal::Check {
+                    functor: "helper".to_string(),
+                    params: vec![engine::Variable::new("X")],
                 }),
-                ast::Goal::Assign(
-                    ast::Variable::Var("Y".to_string()),
-                    ast::RHS::Expr(ast::ArithExpr::Var(ast::Variable::Var("X".to_string()))),
-                ),
+                Box::new(engine::Goal::TruthExpr(engine::Expression::binary(
+                    engine::Expression::variable("X"),
+                    engine::Expression::num(0.25),
+                    engine::ArithmeticOp::Subtract,
+                ))),
+            ),
+        );
+
+        assert_eq!(translated, expected);
+        assert_eq!(
+            translated.truth_value(),
+            engine::Expression::binary(
+                engine::Expression::variable("X"),
+                engine::Expression::num(0.25),
+                engine::ArithmeticOp::Subtract,
+            )
+        );
+    }
+
+    #[test]
+    fn translates_crisp_fact_with_head_normalisation() {
+        let translated = translate_input("parent(john, X).");
+
+        let expected = engine::Clause::new(
+            engine::Symbol::new(
+                "parent",
+                vec![engine::Variable::new("_T0"), engine::Variable::new("X")],
+                vec![engine::Variable::new("_T0")],
+            ),
+            engine::Goal::Conjunction(
+                Box::new(engine::Goal::Assign(
+                    engine::Variable::new("_T0"),
+                    engine::RHSTerm::Sym(engine::Symbol::new("john", vec![], vec![])),
+                )),
+                Box::new(engine::Goal::TruthExpr(engine::Expression::num(1.0))),
+            ),
+        );
+
+        assert_eq!(translated, expected);
+        assert_eq!(translated.truth_value(), engine::Expression::num(1.0));
+    }
+
+    #[test]
+    fn translates_crisp_clause_with_body() {
+        let translated = translate_input("reachable(X) :- edge(X). ");
+
+        let expected = engine::Clause::new(
+            engine::Symbol::new("reachable", vec![engine::Variable::new("X")], vec![]),
+            engine::Goal::Check {
+                functor: "edge".to_string(),
+                params: vec![engine::Variable::new("X")],
+            },
+        );
+
+        assert_eq!(translated, expected);
+        assert_eq!(translated.truth_value(), engine::Expression::num(1.0));
+    }
+
+    #[test]
+    fn translates_check_goal_with_literal_arguments() {
+        let translated = translate_input("p(X) :- q(X, 1, foo). ");
+
+        let expected = engine::Clause::new(
+            engine::Symbol::new(
+                "p",
+                vec![engine::Variable::new("X")],
+                vec![engine::Variable::new("_T0"), engine::Variable::new("_T1")],
+            ),
+            engine::Goal::Conjunction(
+                Box::new(engine::Goal::Assign(
+                    engine::Variable::new("_T0"),
+                    engine::RHSTerm::Num(ordered_float::OrderedFloat::from(1.0)),
+                )),
+                Box::new(engine::Goal::Conjunction(
+                    Box::new(engine::Goal::Assign(
+                        engine::Variable::new("_T1"),
+                        engine::RHSTerm::Sym(engine::Symbol::new("foo", vec![], vec![])),
+                    )),
+                    Box::new(engine::Goal::Check {
+                        functor: "q".to_string(),
+                        params: vec![
+                            engine::Variable::new("X"),
+                            engine::Variable::new("_T0"),
+                            engine::Variable::new("_T1"),
+                        ],
+                    }),
+                )),
+            ),
+        );
+
+        assert_eq!(translated, expected);
+        assert_eq!(translated.truth_value(), engine::Expression::num(1.0));
+    }
+
+    #[test]
+    fn translate_clause_head_tracks_counters_and_goals() {
+        let head = ast::Compound {
+            functor: "mix".to_string(),
+            params: vec![
+                ast::Term::Var(ast::Variable::Var("X".to_string())),
+                ast::Term::Var(ast::Variable::Wildcard),
+                ast::Term::Atom(ast::Atom {
+                    name: "a".to_string(),
+                }),
+                ast::Term::Num(ordered_float::OrderedFloat::from(2.0)),
             ],
         };
 
-        let translated = translate(clause).unwrap();
+        let mut state = TranslationState {
+            temp_var_counter: 0,
+            wildcard_counter: 0,
+        };
 
-        let local_var_names: std::collections::HashSet<_> = translated
-            .head()
-            .local_vars()
-            .iter()
-            .map(|v| v.to_string())
-            .collect();
+        let (params, goals) = translate_clause_head(&head, &mut state).unwrap();
 
-        assert!(local_var_names.contains("Y"), "Y should be in local_vars");
-        assert!(local_var_names.contains("Z"), "Z should be in local_vars");
+        assert_eq!(
+            params,
+            vec![
+                engine::Variable::new("X"),
+                engine::Variable::new("_W0"),
+                engine::Variable::new("_T0"),
+                engine::Variable::new("_T1"),
+            ]
+        );
+        assert_eq!(
+            goals,
+            vec![
+                engine::Goal::Assign(
+                    engine::Variable::new("_T0"),
+                    engine::RHSTerm::Sym(engine::Symbol::new("a", vec![], vec![])),
+                ),
+                engine::Goal::Assign(
+                    engine::Variable::new("_T1"),
+                    engine::RHSTerm::Num(ordered_float::OrderedFloat::from(2.0)),
+                ),
+            ]
+        );
+        assert_eq!(state.temp_var_counter, 2);
+        assert_eq!(state.wildcard_counter, 1);
     }
 
     #[test]
-    fn test_body_variables_from_lists() {
-        // test() :- member(X, [1, 2, 3]).
-        // X is used in body via list parameters
-        let clause = ast::Clause {
-            head: ast::Compound {
-                functor: "test".to_string(),
-                params: vec![],
-            },
-            body: vec![ast::Goal::Check(ast::Compound {
-                functor: "member".to_string(),
-                params: vec![
-                    var("X"),
-                    ast::Term::List(vec![num(1.0), num(2.0), num(3.0)]),
-                ],
-            })],
+    fn term_to_variable_for_relation_creates_assignment_for_atom() {
+        let mut state = TranslationState {
+            temp_var_counter: 0,
+            wildcard_counter: 0,
         };
 
-        let translated = translate(clause).unwrap();
+        let (var, pre_goals) = term_to_variable_for_relation(
+            &ast::Term::Atom(ast::Atom {
+                name: "foo".to_string(),
+            }),
+            &mut state,
+        )
+        .unwrap();
 
-        let local_var_names: std::collections::HashSet<_> = translated
-            .head()
-            .local_vars()
-            .iter()
-            .map(|v| v.to_string())
-            .collect();
+        assert_eq!(var, engine::Variable::new("_T0"));
+        assert_eq!(
+            pre_goals,
+            vec![engine::Goal::Assign(
+                engine::Variable::new("_T0"),
+                engine::RHSTerm::Sym(engine::Symbol::new("foo", vec![], vec![])),
+            )]
+        );
+        assert_eq!(state.temp_var_counter, 1);
+    }
 
-        assert!(local_var_names.contains("X"), "X should be in local_vars");
+    #[test]
+    fn translate_clause_body_non_fuzzy_preserves_goal_order() {
+        let body = vec![
+            ast::Goal::Check(ast::Compound {
+                functor: "a".to_string(),
+                params: vec![ast::Term::Var(ast::Variable::Var("X".to_string()))],
+            }),
+            ast::Goal::Assign(
+                ast::Variable::Var("Y".to_string()),
+                ast::RHS::Expr(ast::ArithExpr::Num(ordered_float::OrderedFloat::from(1.0))),
+            ),
+        ];
+
+        let mut state = TranslationState {
+            temp_var_counter: 0,
+            wildcard_counter: 0,
+        };
+
+        let translated = translate_clause_body(&body, &None, &mut state).unwrap();
+
+        assert_eq!(
+            translated,
+            engine::Goal::Conjunction(
+                Box::new(engine::Goal::Check {
+                    functor: "a".to_string(),
+                    params: vec![engine::Variable::new("X")],
+                }),
+                Box::new(engine::Goal::Assign(
+                    engine::Variable::new("Y"),
+                    engine::RHSTerm::Expr(engine::Expression::num(1.0)),
+                )),
+            )
+        );
     }
 }

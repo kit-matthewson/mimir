@@ -476,7 +476,7 @@ impl Clause {
 
     /// Create a new fuzzy clause.
     ///
-    /// This is done by adding a `TruthValueExpr` goal to the body, which will be evaluated during execution to determine the truth value of this clause.
+    /// This is done by adding a `TruthExpr` goal to the body, which will be evaluated during execution to determine the truth value of this clause.
     ///
     /// # Example
     /// ```
@@ -508,7 +508,7 @@ impl Clause {
 
     /// Create a new fuzzy clause with a fixed truth value.
     ///
-    /// This is done by adding a `TruthValue` goal to the body, which will set the truth value of this clause to the provided value during execution.
+    /// This is done by adding a `TruthExpr` goal to the body, which will set the truth value of this clause to the provided value during execution.
     ///
     /// # Example
     /// ```
@@ -548,16 +548,18 @@ impl Clause {
 
     /// Gets the truth value expression of this clause, if it is fuzzy.
     ///
-    /// This is found by looking for a `TruthValueExpr` goal in the body of the clause. If this is found, the clause is fuzzy and the expression is returned. If not, this clause is crisp and `None` is returned.
+    /// This is found by looking for a `TruthExpr` goal in the body of the clause. If this is found, the clause is fuzzy and the expression is returned. If not, this clause is crisp and `None` is returned.
     ///
-    /// Clauses containing multiple `TruthValueExpr` goals are not supported and have undefined behaviour.
+    /// Clauses containing multiple `TruthExpr` goals have undefined behaviour.
     pub fn truth_value(&self) -> Expression {
-        // Recursively search for a TruthValueExpr goal in the body of this clause
+        // Recursively search for a TruthExpr goal in the body of this clause
+
+        // Because we normally append the truth value goal to the end of the body, we search the right-hand side of conjunctions first to find it faster in the common case
         fn search_goal(goal: &Goal) -> Option<Expression> {
             match goal {
                 Goal::TruthExpr(expr) => Some(expr.clone()),
                 Goal::Conjunction(g1, g2) | Goal::Disjunction(g1, g2) => {
-                    search_goal(g1).or_else(|| search_goal(g2))
+                    search_goal(g2).or_else(|| search_goal(g1))
                 }
                 _ => None,
             }

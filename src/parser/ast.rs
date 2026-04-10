@@ -18,14 +18,34 @@ pub struct Clause {
     pub head: Compound,
     /// The body goals of the clause.
     pub body: Vec<Goal>,
+    /// A possible fuzzy expression for the clause
+    pub fuzzy_expr: Option<ArithExpr>,
+}
+
+impl Clause {
+    /// Returns true if this clause is a fuzzy clause (i.e., has a fuzzy expression).
+    pub fn is_fuzzy(&self) -> bool {
+        self.fuzzy_expr.is_some()
+    }
 }
 
 impl std::fmt::Display for Clause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.head)?;
 
+        // Fuzzy facts
+        if let Some(fuzzy_expr) = &self.fuzzy_expr
+            && self.body.is_empty()
+        {
+            write!(f, " :~ {}", fuzzy_expr)?;
+        }
+
         if !self.body.is_empty() {
-            write!(f, " :- ")?;
+            if self.is_fuzzy() {
+                write!(f, " :~ ")?;
+            } else {
+                write!(f, " :- ")?;
+            }
 
             for (i, term) in self.body.iter().enumerate() {
                 if i > 0 {
@@ -33,6 +53,10 @@ impl std::fmt::Display for Clause {
                 }
 
                 write!(f, "{}", term)?;
+            }
+
+            if let Some(fuzzy_expr) = &self.fuzzy_expr {
+                write!(f, ", {}", fuzzy_expr)?;
             }
         }
 
