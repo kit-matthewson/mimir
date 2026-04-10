@@ -21,9 +21,9 @@ pub enum MimirError {
 #[allow(missing_docs)]
 #[derive(Debug, Error)]
 pub enum ParsingError {
-    #[error("Syntax Error:\n{0}")]
+    #[error("syntax error:\n{0}")]
     VerboseError(String),
-    #[error("trailing characters after parsing: {0}")]
+    #[error("unexpected chars: {0}")]
     TrailingCharacters(String),
 }
 
