@@ -347,11 +347,6 @@ impl RHSTerm {
             }
         }
     }
-
-    /// Create a number term.
-    pub fn num<T: Into<Number>>(n: T) -> Self {
-        RHSTerm::Num(n.into())
-    }
 }
 
 /// The head of a clause with a name, parameters, and list of local variables.
@@ -388,27 +383,6 @@ impl Symbol {
             functor: functor.into(),
             parameters: parameters.into(),
             local_vars: local_vars.into(),
-        }
-    }
-
-    /// Helper for creating symbols for facts.
-    /// Facts have no local variables.
-    ///
-    /// # Example
-    /// ```
-    /// # use mimir::engine::{Symbol, Variable};
-    /// # use mimir::var_vec;
-    /// let fact_sym = Symbol::fact("my_fact", var_vec!["X", "Y"]);
-    /// assert_eq!(fact_sym.functor(), "my_fact");
-    /// assert_eq!(fact_sym.parameters(), &var_vec!["X", "Y"]);
-    /// assert_eq!(fact_sym.arity(), 2);
-    /// assert_eq!(fact_sym.local_vars(), &vec![]);
-    /// ```
-    pub fn fact<T: Into<String>, V: Into<Vec<Variable>>>(functor: T, parameters: V) -> Self {
-        Symbol {
-            functor: functor.into(),
-            parameters: parameters.into(),
-            local_vars: Vec::new(),
         }
     }
 
@@ -493,68 +467,6 @@ impl Clause {
     /// assert_eq!(clause.truth_value(), Expression::num(1.0));
     /// ```
     pub fn new(head: Symbol, body: Goal) -> Self {
-        Clause { head, body }
-    }
-
-    /// Create a new fuzzy clause.
-    ///
-    /// This is done by adding a `TruthExpr` goal to the body, which will be evaluated during execution to determine the truth value of this clause.
-    ///
-    /// # Example
-    /// ```
-    /// # use mimir::engine::{Clause, Goal, Variable, Symbol, Expression};
-    /// # use mimir::var_vec;
-    /// let clause = Clause::fuzzy(
-    ///    Symbol::new("my_clause", var_vec!["X", "Y"], vec![]),
-    ///    Goal::Check { functor: "some_goal".to_string(), params: var_vec!["X"] },
-    ///    Expression::variable("Z"),
-    /// );
-    /// assert_eq!(clause.head().functor(), "my_clause");
-    /// assert_eq!(clause.arity(), 2);
-    /// assert_eq!(clause.body(), &Goal::Conjunction(
-    ///    Box::new(Goal::Check { functor: "some_goal".to_string(), params: var_vec!["X"] }),
-    ///    Box::new(Goal::TruthExpr(Expression::variable("Z"))),
-    /// ));
-    /// assert_eq!(clause.truth_value(), Expression::variable("Z"));
-    /// ```
-    pub fn fuzzy(head: Symbol, body: Goal, truth_value_expression: Expression) -> Self {
-        let body = Goal::Conjunction(
-            Box::new(body),
-            Box::new(Goal::TruthExpr(truth_value_expression.clone())),
-        );
-
-        // TODO: Check that the truth value expression only contains variables that are in the head of this clause.
-
-        Clause { head, body }
-    }
-
-    /// Create a new fuzzy clause with a fixed truth value.
-    ///
-    /// This is done by adding a `TruthExpr` goal to the body, which will set the truth value of this clause to the provided value during execution.
-    ///
-    /// # Example
-    /// ```
-    /// # use mimir::engine::{Clause, Goal, Variable, Symbol, Expression};
-    /// # use mimir::var_vec;
-    /// let clause = Clause::fixed_fuzzy(
-    ///    Symbol::new("my_clause", var_vec!["X", "Y"], vec![]),
-    ///    Goal::Check { functor: "some_goal".to_string(), params: var_vec!["X"] },
-    ///    0.8,
-    /// );
-    /// assert_eq!(clause.head().functor(), "my_clause");
-    /// assert_eq!(clause.arity(), 2);
-    /// assert_eq!(clause.body(), &Goal::Conjunction(
-    ///     Box::new(Goal::Check { functor: "some_goal".to_string(), params: var_vec!["X"] }),
-    ///     Box::new(Goal::TruthExpr(Expression::num(0.8)))
-    /// ));
-    /// assert_eq!(clause.truth_value(), Expression::num(0.8));
-    /// ```
-    pub fn fixed_fuzzy(head: Symbol, body: Goal, truth_value: f64) -> Self {
-        let body = Goal::Conjunction(
-            Box::new(body),
-            Box::new(Goal::TruthExpr(Expression::num(truth_value))),
-        );
-
         Clause { head, body }
     }
 

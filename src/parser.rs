@@ -36,12 +36,7 @@ pub fn program(input: &str) -> Result<Vec<ast::Clause>, crate::error::ParsingErr
     as_top_result(many0(ws(ast::Clause::parse)).parse(input), input)
 }
 
-/// Parses a single clause, which can be used for queries as well as program clauses.
-pub fn clause(input: &str) -> Result<ast::Clause, crate::error::ParsingError> {
-    as_top_result(ws(ast::Clause::parse).parse(input), input)
-}
-
-/// Parses a single goal, which can be used for queries as well as clause bodies.
+/// Parses a query (goal).
 pub fn query(input: &str) -> Result<ast::Goal, crate::error::ParsingError> {
     as_top_result(ws(ast::Goal::parse).parse(input), input)
 }

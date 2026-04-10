@@ -36,10 +36,11 @@ macro_rules! var_vec {
 /// ```
 /// # use mimir::engine::{Clause, Symbol, Variable, Goal, RHSTerm};
 /// # use mimir::clause;
+/// # use ordered_float::OrderedFloat;
 ///
 /// let is_ten = clause!(
 ///     is_ten(T1) { T2 } :- Goal::Conjunction(
-///         Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::num(10))),
+///         Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::Num(OrderedFloat::from(10.0)))),
 ///         Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T2")))
 ///     )
 /// );

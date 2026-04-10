@@ -378,7 +378,7 @@ fn translate_arith_op(op: &ast::ArithOp) -> engine::ArithmeticOp {
 }
 
 /// Collect all variables used in a body (AST goals).
-pub(crate) fn collect_body_variables(body: &[ast::Goal]) -> HashSet<String> {
+fn collect_body_variables(body: &[ast::Goal]) -> HashSet<String> {
     let mut vars = HashSet::new();
     for goal in body {
         match goal {

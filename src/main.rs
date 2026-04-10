@@ -1,4 +1,4 @@
-fn main() -> Result<(), mimir::error::MimirError> {
+fn main() -> Result<(), mimir::MimirError> {
     let fuzzy_program = r"
 trapezoidal(X, A, _, _, _, Y) :-
     X < A,
