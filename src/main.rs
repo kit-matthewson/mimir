@@ -18,23 +18,11 @@ trapezoidal(X, _, _, C, D, Y) :-
 trapezoidal(X, _, _, _, D, Y) :-
     X > D,
     Y = 0.
+
 warm(X) :~
     trapezoidal(X, 15, 20, 25, 30, Y),
     Y.
-
-gt_ten(X) :-
-    X > 10.
-
-is_ten(X) :-
-    X = 10.
-
-is_five_or_ten(X) :~
-    X = 5,
-    0.2.
-is_five_or_ten(X) :~
-    X = 10,
-    0.8.
-    ";
+";
 
     let program = mimir::Program::new(fuzzy_program, 0.01)?;
 
@@ -48,6 +36,7 @@ is_five_or_ten(X) :~
         std::io::stdin().read_line(&mut input).unwrap();
         let query = input.trim();
 
+        // Execute query and print results
         let result = program.query(query);
 
         let solutions = match result {
@@ -63,11 +52,18 @@ is_five_or_ten(X) :~
                 println!("  {} = {}", var.name(), val);
             }
 
-            println!("  {:.2}", solution.truth_value());
+            println!(
+                "  {}.",
+                match solution.truth_value() {
+                    x if x >= 0.99 => "true".to_string(),
+                    x if x <= 0.01 => "false".to_string(),
+                    x => format!("{:.2}", x),
+                },
+            );
         }
 
         if solutions.is_empty() {
-            println!("  false");
+            println!("  false.");
         }
     }
 }
