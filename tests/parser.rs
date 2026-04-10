@@ -26,17 +26,6 @@ fn test_file_parsing() {
                 path,
                 res.err()
             );
-
-            // Check that the entire input was consumed
-            let (remaining, _) = res.as_ref().unwrap();
-
-            assert!(
-                remaining.trim().is_empty(),
-                "Did not consume entire input for file {:?}.\n\nConsumed:\n{:?}\n\nRemaining:\n{:?}\n",
-                path,
-                res.as_ref().unwrap().1,
-                remaining
-            );
         }
     }
 }

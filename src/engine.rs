@@ -36,8 +36,8 @@ impl Solution {
     }
 
     /// Gets the value of a variable in this solution.
-    pub fn get(&self, var: &Variable) -> Result<Value, EngineError> {
-        self.env.get(var, &self.equiv)
+    pub fn get(&self, var: &Variable) -> Option<Value> {
+        self.env.get(var, &self.equiv).ok()
     }
 
     /// Gets the truth value of this solution.

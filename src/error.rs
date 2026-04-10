@@ -9,10 +9,22 @@ use crate::engine::*;
 #[allow(missing_docs)]
 #[derive(Debug, Error)]
 pub enum MimirError {
-    #[error("engine error: {0}")]
-    Engine(#[from] EngineError),
-    #[error("translation error: {0}")]
+    #[error("{0}")]
+    Parsing(#[from] ParsingError),
+    #[error("{0}")]
     Translation(#[from] TranslationError),
+    #[error("{0}")]
+    Engine(#[from] EngineError),
+}
+
+/// An error that may occur during parsing.
+#[allow(missing_docs)]
+#[derive(Debug, Error)]
+pub enum ParsingError {
+    #[error("Syntax Error:\n{0}")]
+    VerboseError(String),
+    #[error("trailing characters after parsing: {0}")]
+    TrailingCharacters(String),
 }
 
 /// An error that may occur during AST to internal representation translation.

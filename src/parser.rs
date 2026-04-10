@@ -9,31 +9,52 @@
 pub mod ast;
 
 use nom::{
-    Parser, branch::*, bytes::complete::*, character::complete::*, combinator::*, multi::*,
-    sequence::*,
+    Finish, Parser, branch::*, bytes::complete::*, character::complete::*, combinator::*,
+    error::context, multi::*, sequence::*,
 };
+use nom_language::error::{VerboseError, convert_error};
+
 use ordered_float::OrderedFloat;
+
+fn as_top_result<T>(presult: PResult<T>, input: &str) -> Result<T, crate::error::ParsingError> {
+    match presult.finish() {
+        Ok(("", result)) => Ok(result),
+        Ok((remaining, _)) => Err(crate::error::ParsingError::TrailingCharacters(
+            remaining.to_string(),
+        )),
+        Err(err) => {
+            let message = convert_error(input, err);
+            Err(crate::error::ParsingError::VerboseError(message))
+        }
+    }
+}
 
 /// Parses an entire Mini-Prolog program consisting of multiple clauses.
 ///
 /// Each clause is separated by optional whitespace.
-pub fn program(input: &str) -> nom::IResult<&str, Vec<ast::Clause>> {
-    many0(ws(ast::Clause::parse)).parse(input)
+pub fn program(input: &str) -> Result<Vec<ast::Clause>, crate::error::ParsingError> {
+    as_top_result(many0(ws(ast::Clause::parse)).parse(input), input)
 }
 
 /// Parses a single clause, which can be used for queries as well as program clauses.
-pub fn clause(input: &str) -> nom::IResult<&str, ast::Clause> {
-    ws(ast::Clause::parse).parse(input)
+pub fn clause(input: &str) -> Result<ast::Clause, crate::error::ParsingError> {
+    as_top_result(ws(ast::Clause::parse).parse(input), input)
 }
 
-/// Takes a parser and produces a new parser that also consumes leading and tracing whitespace.
+/// Parses a single goal, which can be used for queries as well as clause bodies.
+pub fn query(input: &str) -> Result<ast::Goal, crate::error::ParsingError> {
+    as_top_result(ws(ast::Goal::parse).parse(input), input)
+}
+
+/// Standard parser result type using nom verbose errors.
+pub type PResult<'a, T> = nom::IResult<&'a str, T, VerboseError<&'a str>>;
+
+/// Takes a parser and produces a new parser that also consumes leading and trailing whitespace.
 ///
 /// This implementation is based on the `ws` combinator from the nom documentation.
-fn ws<'a, O, E: nom::error::ParseError<&'a str>, F>(
-    inner: F,
-) -> impl nom::Parser<&'a str, Output = O, Error = E>
+fn ws<'a, O, F>(inner: F) -> impl nom::Parser<&'a str, Output = O, Error = VerboseError<&'a str>>
 where
-    F: nom::Parser<&'a str, Output = O, Error = E>,
+    F: nom::Parser<&'a str, Output = O, Error = VerboseError<&'a str>>,
 {
     delimited(multispace0, inner, multispace0)
 }
@@ -42,23 +63,25 @@ where
 ///
 /// Numbers can be positive or negative float, and can contain underscores as digit separators.
 /// Numbers must fit within the range of f64.
-fn number(input: &str) -> nom::IResult<&str, OrderedFloat<f64>> {
-    fn digits_with_separators(input: &str) -> nom::IResult<&str, &str> {
+fn number(input: &str) -> PResult<'_, OrderedFloat<f64>> {
+    fn digits_with_separators(input: &str) -> PResult<'_, &str> {
         recognize(pair(digit1, many0(preceded(tag("_"), digit1)))).parse(input)
     }
 
-    let (input, number_str) = recognize((
-        opt(alt((tag("-"), tag("+")))),
-        digits_with_separators,
-        opt(preceded(tag("."), digits_with_separators)),
-    ))
-    .parse(input)?;
-
-    let number = number_str.replace("_", "").parse::<f64>().map_err(|_| {
-        nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Float))
-    })?;
-
-    Ok((input, OrderedFloat::from(number)))
+    map_res(
+        recognize((
+            opt(alt((tag("-"), tag("+")))),
+            digits_with_separators,
+            opt(preceded(tag("."), digits_with_separators)),
+        )),
+        |number_str: &str| {
+            number_str
+                .replace("_", "")
+                .parse::<f64>()
+                .map(OrderedFloat::from)
+        },
+    )
+    .parse(input)
 }
 
 /// Types which can be parsed.
@@ -66,7 +89,7 @@ fn number(input: &str) -> nom::IResult<&str, OrderedFloat<f64>> {
 /// The type's `Display` implementation should parse into an identical type.
 pub trait Parseable: std::fmt::Display + Sized {
     /// Parse the type from a &str input.
-    fn parse(input: &str) -> nom::IResult<&str, Self>;
+    fn parse(input: &str) -> PResult<'_, Self>;
 }
 
 impl Parseable for ast::Clause {
@@ -93,7 +116,7 @@ impl Parseable for ast::Clause {
     ///
     /// assert_eq!(clause.to_string(), input);
     /// ```
-    fn parse(input: &str) -> nom::IResult<&str, Self> {
+    fn parse(input: &str) -> PResult<'_, Self> {
         let (input, head) = ast::Compound::parse(input)?;
 
         let (input, (body, fuzzy_expr)) = alt((
@@ -108,8 +131,8 @@ impl Parseable for ast::Clause {
                         separated_list1(ws(tag(",")), ast::Goal::parse),
                         ws(tag(",")),
                     )),
-                    ws(ast::ArithExpr::parse),
-                    ws(tag(".")),
+                    context("fuzzy expression", ws(ast::ArithExpr::parse)),
+                    ws(context("period", tag("."))),
                 )
                     .parse(input)?;
 
@@ -125,7 +148,7 @@ impl Parseable for ast::Clause {
                         ws(tag(":-")),
                         separated_list1(ws(tag(",")), ast::Goal::parse),
                     )),
-                    ws(tag(".")),
+                    ws(context("period", tag("."))),
                 )
                     .parse(input)?;
 
@@ -158,27 +181,27 @@ impl Parseable for ast::Goal {
     ///
     /// assert_eq!(goal.to_string(), input);
     /// ```
-    fn parse(input: &str) -> nom::IResult<&str, Self> {
+    fn parse(input: &str) -> PResult<'_, Self> {
         alt((
             // Relation
             |input| {
-                let (input, left) = ast::Term::parse(input)?;
-                let (input, op) = ws(ast::RelationalOp::parse).parse(input)?;
-                let (input, right) = ast::Term::parse(input)?;
+                let (input, left) = context("lhs term", ws(ast::Term::parse)).parse(input)?;
+                let (input, op) = context("operator", ws(ast::RelationalOp::parse)).parse(input)?;
+                let (input, right) = context("rhs term", ws(ast::Term::parse)).parse(input)?;
 
                 Ok((input, Self::Relation(left, op, right)))
             },
             // Assignment
             |input| {
-                let (input, var) = ast::Variable::parse(input)?;
-                let (input, _) = ws(tag("=")).parse(input)?;
-                let (input, rhs) = ast::RHS::parse(input)?;
+                let (input, var) = context("variable", ws(ast::Variable::parse)).parse(input)?;
+                let (input, _) = context("operator", ws(tag("="))).parse(input)?;
+                let (input, rhs) = context("rhs term", ws(ast::RHS::parse)).parse(input)?;
 
                 Ok((input, Self::Assign(var, rhs)))
             },
             // Check
             |input| {
-                let (input, compound) = ast::Compound::parse(input)?;
+                let (input, compound) = ws(ast::Compound::parse).parse(input)?;
 
                 Ok((input, Self::Check(compound)))
             },
@@ -200,7 +223,7 @@ impl Parseable for ast::Term {
     ///
     /// assert_eq!(term.to_string(), input);
     /// ```
-    fn parse(input: &str) -> nom::IResult<&str, Self> {
+    fn parse(input: &str) -> PResult<'_, Self> {
         alt((
             |input| {
                 let (input, _) = tag("[").parse(input)?;
@@ -210,7 +233,7 @@ impl Parseable for ast::Term {
                     separated_list0(ws(alt((tag(","), tag("|")))), ast::Term::parse)
                         .parse(input)?;
 
-                let (input, _) = tag("]").parse(input)?;
+                let (input, _) = context("closing bracket", tag("]")).parse(input)?;
 
                 Ok((input, Self::List(list)))
             },
@@ -249,7 +272,7 @@ impl Parseable for ast::Atom {
     ///
     /// assert_eq!(atom.to_string(), input);
     /// ```
-    fn parse(input: &str) -> nom::IResult<&str, Self> {
+    fn parse(input: &str) -> PResult<'_, Self> {
         let (input, name) = recognize(pair(
             take_while1(|c: char| c.is_ascii_lowercase()),
             take_while(|c: char| c.is_ascii_alphanumeric() || c == '_'),
@@ -277,12 +300,12 @@ impl Parseable for ast::Compound {
     ///
     /// assert_eq!(compound.to_string(), input);
     /// ```
-    fn parse(input: &str) -> nom::IResult<&str, Self> {
+    fn parse(input: &str) -> PResult<'_, Self> {
         let (input, functor) = ast::Atom::parse(input)?;
         let (input, params) = delimited(
-            tag("("),
+            context("opening parenthesis", tag("(")),
             separated_list0(ws(tag(",")), ast::Term::parse),
-            tag(")"),
+            context("closing parenthesis", tag(")")),
         )
         .parse(input)?;
 
@@ -309,7 +332,7 @@ impl Parseable for ast::Variable {
     ///
     /// assert_eq!(var.to_string(), input);
     /// ```
-    fn parse(input: &str) -> nom::IResult<&str, Self> {
+    fn parse(input: &str) -> PResult<'_, Self> {
         let (input, name) = recognize(pair(
             alt((take_while1(|c: char| c.is_ascii_uppercase()), tag("_"))),
             take_while(|c: char| c.is_ascii_alphanumeric() || c == '_'),
@@ -335,7 +358,7 @@ impl Parseable for ast::RelationalOp {
     ///
     /// assert_eq!(op.to_string(), input);
     /// ```
-    fn parse(input: &str) -> nom::IResult<&str, Self> {
+    fn parse(input: &str) -> PResult<'_, Self> {
         alt((
             value(Self::LessThanEqual, tag("=<")),
             value(Self::LessThanEqual, tag("<=")),
@@ -361,7 +384,7 @@ impl Parseable for ast::RHS {
     ///
     /// assert_eq!(rhs.to_string(), input);
     /// ```
-    fn parse(input: &str) -> nom::IResult<&str, Self> {
+    fn parse(input: &str) -> PResult<'_, Self> {
         alt((
             |input| {
                 let (input, expr) = ast::ArithExpr::parse(input)?;
@@ -388,9 +411,9 @@ impl Parseable for ast::ArithExpr {
     ///
     /// assert_eq!(expr.to_string(), input);
     /// ```
-    fn parse(input: &str) -> nom::IResult<&str, Self> {
+    fn parse(input: &str) -> PResult<'_, Self> {
         // Parse a primary expression: variable, number, or parenthesized expression
-        fn parse_primary(input: &str) -> nom::IResult<&str, ast::ArithExpr> {
+        fn parse_primary(input: &str) -> PResult<'_, ast::ArithExpr> {
             alt((
                 map(ast::Variable::parse, ast::ArithExpr::Var),
                 map(number, ast::ArithExpr::Num),
@@ -423,7 +446,7 @@ impl Parseable for ast::ArithOp {
     ///
     /// assert_eq!(op.to_string(), input);
     /// ```
-    fn parse(input: &str) -> nom::IResult<&str, Self> {
+    fn parse(input: &str) -> PResult<'_, Self> {
         alt((
             value(Self::Add, tag("+")),
             value(Self::Subtract, tag("-")),

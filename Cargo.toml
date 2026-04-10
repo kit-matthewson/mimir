@@ -10,5 +10,6 @@ features = ["precommit-hook", "run-cargo-test", "run-cargo-clippy"]
 
 [dependencies]
 nom = "8.0"
+nom-language = "0.1"
 thiserror = "2.0"
 ordered-float = "5.1"
