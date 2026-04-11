@@ -373,9 +373,9 @@ impl Symbol {
     /// ```
     /// # use mimir::engine::{Symbol, Variable};
     /// # use mimir::var_vec;
-    /// let sym = Symbol::new("my_sym", var_vec!["A", "B", "C"], vec![]);
+    /// let sym = Symbol::new("my_sym", var_vec![A, B, C], vec![]);
     /// assert_eq!(sym.functor(), "my_sym");
-    /// assert_eq!(sym.parameters(), &var_vec!["A", "B", "C"]);
+    /// assert_eq!(sym.parameters(), &var_vec![A, B, C]);
     /// assert_eq!(sym.local_vars(), &vec![]);
     /// ```
     pub fn new<T: Into<String>, V1: Into<Vec<Variable>>, V2: Into<Vec<Variable>>>(
@@ -396,7 +396,7 @@ impl Symbol {
     /// ```
     /// # use mimir::engine::{Symbol, Variable};
     /// # use mimir::var_vec;
-    /// let sym = Symbol::new("my_sym", var_vec!["A", "B", "C"], vec![]);
+    /// let sym = Symbol::new("my_sym", var_vec![A, B, C], vec![]);
     /// assert_eq!(sym.arity(), 3);
     /// ```
     pub fn arity(&self) -> usize {
@@ -409,7 +409,7 @@ impl Symbol {
     /// ```
     /// # use mimir::engine::{Symbol, Variable};
     /// # use mimir::var_vec;
-    /// let sym = Symbol::new("my_sym", var_vec!["A", "B", "C"], vec![]);
+    /// let sym = Symbol::new("my_sym", var_vec![A, B, C], vec![]);
     /// assert_eq!(sym.functor(), "my_sym");
     /// ```
     pub fn functor(&self) -> &str {
@@ -422,8 +422,8 @@ impl Symbol {
     /// ```
     /// # use mimir::engine::{Symbol, Variable};
     /// # use mimir::var_vec;
-    /// let sym = Symbol::new("my_sym", var_vec!["A", "B", "C"], vec![]);
-    /// assert_eq!(sym.parameters(), &var_vec!["A", "B", "C"]);
+    /// let sym = Symbol::new("my_sym", var_vec![A, B, C], vec![]);
+    /// assert_eq!(sym.parameters(), &var_vec![A, B, C]);
     /// ```
     pub fn parameters(&self) -> &Vec<Variable> {
         &self.parameters
@@ -435,8 +435,8 @@ impl Symbol {
     /// ```
     /// # use mimir::engine::{Symbol, Variable};
     /// # use mimir::var_vec;
-    /// let sym = Symbol::new("my_sym", vec![], var_vec!["X", "Y"]);
-    /// assert_eq!(sym.local_vars(), &var_vec!["X", "Y"]);
+    /// let sym = Symbol::new("my_sym", vec![], var_vec![X, Y]);
+    /// assert_eq!(sym.local_vars(), &var_vec![X, Y]);
     /// ```
     pub fn local_vars(&self) -> &Vec<Variable> {
         &self.local_vars
@@ -462,7 +462,7 @@ impl Clause {
     /// # use mimir::engine::{Clause, Goal, Variable, Symbol, Expression};
     /// # use mimir::var_vec;
     /// let clause = Clause::new(
-    ///    Symbol::new("my_clause", var_vec!["X", "Y"], vec![]),
+    ///    Symbol::new("my_clause", var_vec![X, Y], vec![]),
     ///    Goal::TruthExpr(Expression::num(1.0)),
     /// );
     /// assert_eq!(clause.head().functor(), "my_clause");
@@ -574,7 +574,7 @@ mod tests {
 
     #[test]
     fn test_var_creation() {
-        let vars = var_vec!["A", "B", "C"];
+        let vars = var_vec![A, B, C];
 
         assert_eq!(
             vars,
@@ -593,8 +593,8 @@ mod tests {
         );
 
         assert_eq!(my_clause.head().functor(), "my_clause");
-        assert_eq!(my_clause.head().parameters(), &var_vec!["X", "Y"]);
-        assert_eq!(my_clause.head().local_vars(), &var_vec!["Z"]);
+        assert_eq!(my_clause.head().parameters(), &var_vec![X, Y]);
+        assert_eq!(my_clause.head().local_vars(), &var_vec![Z]);
         assert_eq!(my_clause.arity(), 2);
         assert_eq!(my_clause.body(), &Goal::TruthExpr(Expression::num(1.0)));
         assert_eq!(
@@ -670,7 +670,7 @@ mod tests {
             vec![Variable::new("X")],
         );
 
-        let sym2 = Symbol::new("functor", var_vec!["A", "B"], var_vec!["X"]);
+        let sym2 = Symbol::new("functor", var_vec![A, B], var_vec![X]);
 
         assert_eq!(sym1.functor, "functor");
         assert_eq!(sym1.parameters, sym2.parameters);
@@ -784,7 +784,7 @@ mod tests {
         let value = term.evaluate(&env, &equiv).unwrap();
         assert_eq!(value, Value::num(OrderedFloat::from(15.0)));
 
-        let symbol = Symbol::new("func", var_vec!["A", "B"], vec![]);
+        let symbol = Symbol::new("func", var_vec![A, B], vec![]);
         let term = RHSTerm::Sym(symbol);
         let value = term.evaluate(&env, &equiv).unwrap();
         assert_eq!(
@@ -802,7 +802,7 @@ mod tests {
     #[test]
     fn test_crisp_clause() {
         let clause = Clause {
-            head: Symbol::new("my_clause", var_vec!["X", "Y"], var_vec!["Z"]),
+            head: Symbol::new("my_clause", var_vec![X, Y], var_vec![Z]),
             body: Goal::TruthExpr(Expression::num(1.0)),
         };
 
@@ -814,7 +814,7 @@ mod tests {
     fn test_environment() {
         let mut pgen = PlaceholderGenerator::new();
 
-        let symbol = Symbol::new("test_clause", var_vec!["A", "B"], var_vec!["X", "Y"]);
+        let symbol = Symbol::new("test_clause", var_vec![A, B], var_vec![X, Y]);
 
         let args = vec![Value::num(10), Value::num(20)];
         let env = Environment::for_symbol(&symbol, &args, &mut pgen).unwrap();
@@ -840,17 +840,17 @@ mod tests {
     #[test]
     fn test_clause_database() {
         let clause1 = Clause {
-            head: Symbol::new("clause", var_vec!["A"], vec![]),
+            head: Symbol::new("clause", var_vec![A], vec![]),
             body: Goal::TruthExpr(Expression::num(1.0)),
         };
 
         let clause2 = Clause {
-            head: Symbol::new("clause", var_vec!["A", "B"], vec![]),
+            head: Symbol::new("clause", var_vec![A, B], vec![]),
             body: Goal::TruthExpr(Expression::num(0.0)),
         };
 
         let clause3 = Clause {
-            head: Symbol::new("clause", var_vec!["X"], vec![]),
+            head: Symbol::new("clause", var_vec![X], vec![]),
             body: Goal::TruthExpr(Expression::num(1.0)),
         };
 

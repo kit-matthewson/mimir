@@ -68,60 +68,11 @@
 
 pub mod engine;
 pub mod error;
+mod macros;
 pub mod parser;
 pub mod translator;
 
 pub use error::MimirError;
-
-/// A macro for conveniently constructing Vecs of variables.
-///
-/// # Example
-/// ```
-/// # use mimir::engine::Variable;
-/// # use mimir::var_vec;
-/// let vars = var_vec!["A", "B", "C"];
-/// assert_eq!(vars, vec![Variable::new("A"), Variable::new("B"), Variable::new("C")]);
-/// ```
-#[macro_export]
-macro_rules! var_vec {
-    ( $($x:expr),*) => {
-        vec![$(
-            $crate::engine::Variable::new($x),
-        )*]
-    };
-}
-
-/// A macro for defining clauses.
-///
-/// # Example
-/// ```
-/// # use mimir::engine::{Clause, Symbol, Variable, Goal, RHSTerm};
-/// # use mimir::clause;
-/// # use ordered_float::OrderedFloat;
-///
-/// let is_ten = clause!(
-///     is_ten(T1) { T2 } :- Goal::Conjunction(
-///         Box::new(Goal::Assign(Variable::new("T2"), RHSTerm::Num(OrderedFloat::from(10.0)))),
-///         Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T2")))
-///     )
-/// );
-///
-/// assert_eq!(is_ten.head().functor(), "is_ten");
-/// assert_eq!(is_ten.arity(), 1);
-/// ```
-#[macro_export]
-macro_rules! clause {
-    ($name:ident ( $($p:ident),* ) { $($l:ident),* } :- $goal:expr) => {
-        Clause::new(
-            Symbol::new(
-                stringify!($name),
-                vec![$( Variable::new(stringify!($p)) ),*],
-                vec![$( Variable::new(stringify!($l)) ),*],
-            ),
-            $goal
-        )
-    };
-}
 
 /// The response from executing a query, which may contain multiple solutions.
 pub struct Solution {
@@ -159,6 +110,8 @@ impl Program {
             .into_iter()
             .map(translator::translate_clause)
             .collect::<Result<Vec<_>, _>>()?;
+
+        println!("Translated clauses:\n{:#?}", translated_clauses);
 
         Ok(Program {
             engine: engine::Engine::new(translated_clauses),

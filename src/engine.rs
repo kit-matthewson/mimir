@@ -80,6 +80,11 @@ impl Engine {
         Engine { db }
     }
 
+    /// Returns the clauses in the engine's database.
+    pub fn clauses(&self) -> Vec<Clause> {
+        self.db.clauses()
+    }
+
     /// Execute the engine on the given query.
     pub fn execute(
         &self,
@@ -273,7 +278,7 @@ impl Engine {
 mod tests {
     use ordered_float::OrderedFloat;
 
-    use crate::{clause, var_vec};
+    use crate::{assign, clause, lit, query, truth_expression, var, var_vec};
 
     use super::*;
 
@@ -288,10 +293,10 @@ mod tests {
 
         // Query: is_ten(X)
         let query = Query {
-            local_vars: var_vec!["X"],
+            local_vars: var_vec![X],
             goal: Goal::Check {
                 functor: "is_ten".to_string(),
-                params: var_vec!["X"],
+                params: var_vec![X],
             },
         };
 
@@ -308,11 +313,11 @@ mod tests {
 
         // Query: is_ten(5) - should return no solutions because X can't be both 10 and 5
         let query_fail = Query {
-            local_vars: var_vec!["X"],
+            local_vars: var_vec![X],
             goal: Goal::Conjunction(
                 Box::new(Goal::Check {
                     functor: "is_ten".to_string(),
-                    params: var_vec!["X"],
+                    params: var_vec![X],
                 }),
                 Box::new(Goal::Assign(
                     Variable::new("X"),
@@ -346,10 +351,10 @@ mod tests {
 
         // Query: is_ten_or_five(X)
         let query = Query {
-            local_vars: var_vec!["X"],
+            local_vars: var_vec![X],
             goal: Goal::Check {
                 functor: "is_ten_or_five".to_string(),
-                params: var_vec!["X"],
+                params: var_vec![X],
             },
         };
 
@@ -537,7 +542,55 @@ mod tests {
         state.env.assign(&Variable::new("X"), Value::num(10));
         state.env.assign(&Variable::new("Y"), Value::num(5));
 
-        let result = engine.handle_check(state, "clause".to_string(), var_vec!["X"]);
+        let result = engine.handle_check(state, "clause".to_string(), var_vec![X]);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_program() {
+        use crate::{check, clause, conjunction};
+
+        let program = vec![
+            clause!(edge(t1, t2) {} :- conjunction!(
+                assign!(t1, RHSTerm::Sym(lit!(a))),
+                assign!(t2, RHSTerm::Sym(lit!(b))),
+                truth_expression!(1.0)
+            )),
+            clause!(edge(t1, t2) {} :- conjunction!(
+                assign!(t1, RHSTerm::Sym(lit!(b))),
+                assign!(t2, RHSTerm::Sym(lit!(c))),
+                truth_expression!(1.0)
+            )),
+            clause!(edge(t1, t2) {} :- conjunction!(
+                assign!(t1, RHSTerm::Sym(lit!(c))),
+                assign!(t2, RHSTerm::Sym(lit!(d))),
+                truth_expression!(1.0)
+            )),
+            clause!(path(A, B) {} :- check!(edge, A, B)),
+            clause!(path(A, B) {} :- conjunction!(
+                check!(edge, A, X),
+                check!(path, X, B)
+            )),
+        ];
+
+        let engine = Engine::new(program);
+
+        let query = query!(path, a, X);
+        let solutions = engine.execute(query.clone(), 0.01).unwrap();
+
+        let mut results = vec![];
+        for solution in solutions.iter() {
+            let value = solution.get(&var!(X)).unwrap();
+            results.push(value);
+        }
+
+        assert_eq!(
+            results,
+            vec![
+                Value::Ground("b".into(), vec![]),
+                Value::Ground("c".into(), vec![]),
+                Value::Ground("d".into(), vec![])
+            ]
+        );
     }
 }

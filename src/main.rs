@@ -8,7 +8,6 @@ edge(c, e) :~ 0.8.
 path(A, B) :- edge(A, B).
 path(A, B) :- edge(A, X), path(X, B).
 ";
-
     let program = mimir::Program::new(fuzzy_program)?;
 
     println!("{fuzzy_program}");

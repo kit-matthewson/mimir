@@ -225,6 +225,14 @@ impl ClauseDatabase {
         ClauseDatabase { clauses }
     }
 
+    /// Return all clauses in the database.
+    pub fn clauses(&self) -> Vec<Clause> {
+        self.clauses
+            .values()
+            .flat_map(|vec| vec.clone())
+            .collect::<Vec<Clause>>()
+    }
+
     /// Get the clauses associated with the given functor and arity.
     /// Will return an empty list if functor/arity does not exist in the database.
     pub fn get(&self, functor: &str, arity: usize) -> Vec<Clause> {
@@ -336,7 +344,7 @@ mod tests {
         assert!(env.is_empty());
 
         // Test environment for symbol
-        let symbol = Symbol::new("sym", var_vec!["X", "Y"], var_vec!["Z"]);
+        let symbol = Symbol::new("sym", var_vec![X, Y], var_vec![Z]);
         let args = vec![
             Value::Number(OrderedFloat::from(10)),
             Value::Number(OrderedFloat::from(20)),
@@ -421,17 +429,17 @@ mod tests {
     #[test]
     fn test_clause_db() {
         let clause1_a = Clause::new(
-            Symbol::new("clause1", var_vec!["X"], vec![]),
+            Symbol::new("clause1", var_vec![X], vec![]),
             Goal::TruthExpr(Expression::num(1.0)),
         );
 
         let clause1_b = Clause::new(
-            Symbol::new("clause1", var_vec!["Y"], vec![]),
+            Symbol::new("clause1", var_vec![Y], vec![]),
             Goal::TruthExpr(Expression::num(0.0)),
         );
 
         let clause2 = Clause::new(
-            Symbol::new("clause2", var_vec!["Z"], vec![]),
+            Symbol::new("clause2", var_vec![Z], vec![]),
             Goal::TruthExpr(Expression::num(1.0)),
         );
 
