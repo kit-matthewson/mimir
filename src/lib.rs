@@ -42,7 +42,8 @@
 //! ```
 //! use mimir::Program;
 //!
-//! // A program with some fuzzy edges, where the truth value of each edge is given by the number after `:~`. Edges without a specified truth value have an implied value of 1.0.
+//! // A program with some fuzzy edges.
+//! // Rules without a specified truth value have an implied value of 1.0.
 //! let program_src = r"
 //! edge(a, b).
 //! edge(b, c) :~ 0.9.
