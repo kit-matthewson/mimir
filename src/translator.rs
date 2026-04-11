@@ -40,17 +40,22 @@ pub fn translate_clause(clause: ast::Clause) -> Result<engine::Clause, Translati
     let temp_vars = (0..state.temp_var_counter).map(|i| format!("_T{}", i));
     let wildcard_vars = (0..state.wildcard_counter).map(|i| format!("_W{}", i));
 
+    let param_names: HashSet<String> = params.iter().map(|v| v.name().to_string()).collect();
+
     let mut local_vars: Vec<engine::Variable> = temp_vars
         .chain(wildcard_vars)
+        .filter(|name| !param_names.contains(name))
         .map(engine::Variable::new)
         .collect();
 
     // Add any variables used in the body that aren't in the head parameters
     let body_vars = collect_body_variables(&clause.body);
-    let param_names: HashSet<String> = params.iter().map(|v| v.to_string()).collect();
+    let mut local_var_names: HashSet<String> =
+        local_vars.iter().map(|v| v.name().to_string()).collect();
     for var_name in body_vars {
-        if !param_names.contains(&var_name) {
+        if !param_names.contains(&var_name) && !local_var_names.contains(&var_name) {
             local_vars.push(engine::Variable::new(&var_name));
+            local_var_names.insert(var_name);
         }
     }
 
@@ -476,11 +481,7 @@ mod tests {
         let translated = translate_input("fuzzy(foo) :~ 0.8.");
 
         let expected = engine::Clause::new(
-            engine::Symbol::new(
-                "fuzzy",
-                vec![engine::Variable::new("_T0")],
-                vec![engine::Variable::new("_T0")],
-            ),
+            engine::Symbol::new("fuzzy", vec![engine::Variable::new("_T0")], vec![]),
             engine::Goal::Conjunction(
                 Box::new(engine::Goal::Assign(
                     engine::Variable::new("_T0"),
@@ -573,7 +574,7 @@ mod tests {
             engine::Symbol::new(
                 "parent",
                 vec![engine::Variable::new("_T0"), engine::Variable::new("X")],
-                vec![engine::Variable::new("_T0")],
+                vec![],
             ),
             engine::Goal::Conjunction(
                 Box::new(engine::Goal::Assign(

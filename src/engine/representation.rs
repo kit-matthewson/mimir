@@ -95,6 +95,10 @@ impl std::fmt::Display for Value {
         match self {
             Value::Number(n) => write!(f, "{}", n),
             Value::Ground(functor, args) => {
+                if args.is_empty() {
+                    return write!(f, "{}", functor);
+                }
+
                 let args_str = args
                     .iter()
                     .map(|arg| format!("{}", arg))

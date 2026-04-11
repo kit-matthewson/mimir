@@ -215,19 +215,21 @@ impl Engine {
         let mut resultant_states = Vec::new();
 
         for clause in clauses {
+            let mut clause_placeholder_gen = state.placeholder_gen.clone();
+
             let clause_env = Environment::for_symbol_with_params(
                 clause.head(),
                 &params,
                 &state.env,
                 &state.equiv,
-                &mut state.placeholder_gen.clone(),
+                &mut clause_placeholder_gen,
             )?;
 
             let clause_state = State {
                 env: clause_env,
                 equiv: state.equiv.clone(),
                 truth_value: state.truth_value,
-                placeholder_gen: state.placeholder_gen.clone(),
+                placeholder_gen: clause_placeholder_gen,
             };
 
             match self.handle_goal(clause.body().clone(), clause_state) {
