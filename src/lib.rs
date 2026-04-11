@@ -109,7 +109,7 @@ impl Program {
     /// Performs a crisp query, treating any solution with a truth value >= 0.5 as true and any solution with a truth value < 0.5 as false.
     pub fn crisp_query(&self, query: &str) -> Result<Vec<Solution>, MimirError> {
         let solutions = self
-            .query(query, 0.5)?
+            .fuzzy_query(query, 0.5)?
             .iter()
             .map(|solution| Solution {
                 bindings: solution.bindings.clone(),
@@ -125,7 +125,11 @@ impl Program {
     }
 
     /// Executes a query against the program, returning a vector of solutions.
-    pub fn query(&self, query: &str, truth_threshold: f64) -> Result<Vec<Solution>, MimirError> {
+    pub fn fuzzy_query(
+        &self,
+        query: &str,
+        truth_threshold: f64,
+    ) -> Result<Vec<Solution>, MimirError> {
         let goal = parser::query(query)?;
 
         let internal_query = translator::translate_query(goal)?;
