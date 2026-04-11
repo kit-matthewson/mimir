@@ -1,6 +1,66 @@
-//! # Mimir: A Prolog Interpreter in Rust
+//! # Mimir
 //!
-//! Mimir is a simple Mini-Prolog interpreter implemented in Rust.
+//! Mimir is a Mini-Prolog interpreter written in Rust, extended with support for fuzzy logic.
+//!
+//! - Facts and rules can be written with standard Prolog syntax.
+//! - Fuzzy rules can be defined using `:~` instead of `:-`, and the last goal in the body is treated as a 'truth expression', evaluated to a float and used as the truth value of the clause.
+//!
+//! # Crisp Execution
+//!
+//! Use [`Program::crisp_query`] to execute queries in a classical true/false manner.
+//! Predicates written in the standard Prolog style (using `:-`) have a truth value of 1.0 if they can be derived and 0.0 if they cannot.
+//! This allows you to write traditional Prolog programs and execute them as normal.
+//!
+//! If the program contains fuzzy clauses (using `:~`), they will be discarded if their truth value is below 0.5. Solutions returned from a crisp query will have their truth values rounded to either 0.0 or 1.0 accordingly.
+//!
+//! ```
+//! use mimir::Program;
+//!
+//! // A standard Prolog program defining edges of a graph and a recursive path predicate.
+//! let program_src = r"
+//! edge(a, b).
+//! edge(b, c).
+//! edge(c, d).
+//!
+//! path(A, B) :- edge(A, B).
+//! path(A, B) :- edge(A, X), path(X, B).
+//! ";
+//!
+//! let program = Program::new(program_src)?;
+//!
+//! // Solutions to path(a, X) should include X = b, X = c, and X = d.
+//! let solutions = program.crisp_query("path(a, X)")?;
+//! assert!(!solutions.is_empty());
+//! # return Ok::<(), mimir::MimirError>(())
+//! ```
+//!
+//! # Fuzzy Execution
+//!
+//! Use [`Program::fuzzy_query`] when your program contains uncertain knowledge.
+//! Provide a `truth_threshold` to discard weak derivations during evaluation and avoid floating point precision issues.
+//!
+//! ```
+//! use mimir::Program;
+//!
+//! // A program with some fuzzy edges, where the truth value of each edge is given by the number after `:~`. Edges without a specified truth value have an implied value of 1.0.
+//! let program_src = r"
+//! edge(a, b).
+//! edge(b, c) :~ 0.9.
+//! edge(c, d).
+//! edge(c, e) :~ 0.8.
+//!
+//! path(A, B) :- edge(A, B).
+//! path(A, B) :- edge(A, X), path(X, B).
+//! ";
+//!
+//! let program = Program::new(program_src)?;
+//!
+//! // Keep any solution whose evolving truth value stays >= 0.01.
+//! let solutions = program.fuzzy_query("path(a, X)", 0.01)?;
+//! assert!(!solutions.is_empty());
+//!
+//! # return Ok::<(), mimir::MimirError>(())
+//! ```
 
 #![warn(missing_docs)]
 #![allow(clippy::module_inception)]
