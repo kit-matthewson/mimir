@@ -573,9 +573,10 @@ mod tests {
             )),
         ];
 
+        let query = query!(path, a, X);
+
         let engine = Engine::new(program);
 
-        let query = query!(path, a, X);
         let solutions = engine.execute(query.clone(), 0.01).unwrap();
 
         let mut results = vec![];

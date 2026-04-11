@@ -1,4 +1,33 @@
 //! Macros for constructing the various components of a Mimir program, such as variables and clauses.
+//!
+//! # Example
+//! ```
+//! # use mimir::{assign, clause, check, conjunction, query, truth_expression, var, var_vec, lit};
+//! # use mimir::engine::RHSTerm;
+//! let program = vec![
+//!    clause!(edge(t1, t2) {} :- conjunction!(
+//!        assign!(t1, RHSTerm::Sym(lit!(a))),
+//!        assign!(t2, RHSTerm::Sym(lit!(b))),
+//!        truth_expression!(1.0)
+//!    )),
+//!    clause!(edge(t1, t2) {} :- conjunction!(
+//!        assign!(t1, RHSTerm::Sym(lit!(b))),
+//!        assign!(t2, RHSTerm::Sym(lit!(c))),
+//!        truth_expression!(1.0)
+//!    )),
+//!    clause!(edge(t1, t2) {} :- conjunction!(
+//!        assign!(t1, RHSTerm::Sym(lit!(c))),
+//!        assign!(t2, RHSTerm::Sym(lit!(d))),
+//!        truth_expression!(1.0)
+//!    )),
+//!    clause!(path(A, B) {} :- check!(edge, A, B)),
+//!    clause!(path(A, B) {} :- conjunction!(
+//!        check!(edge, A, X),
+//!        check!(path, X, B)
+//!    )),
+//! ];
+//! let query = query!(path, a, X);
+//! ```
 
 /// Constructs a variable with the given name.
 ///

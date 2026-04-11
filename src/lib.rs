@@ -62,6 +62,9 @@
 //!
 //! # return Ok::<(), mimir::MimirError>(())
 //! ```
+//!
+//! # Macros
+//! Mimir provides a set of macros for conveniently constructing the various components of a Mimir program, such as variables and clauses. See the documentation for the [`macros`] module for details.
 
 #![warn(missing_docs)]
 #![allow(clippy::module_inception)]
