@@ -12,7 +12,7 @@ use nom::{
     Finish, Parser, branch::*, bytes::complete::*, character::complete::*, combinator::*,
     error::context, multi::*, sequence::*,
 };
-use nom_language::error::{VerboseError, convert_error};
+use nom_language::error::{VerboseError, VerboseErrorKind, convert_error};
 
 use ordered_float::OrderedFloat;
 
@@ -23,7 +23,13 @@ fn as_top_result<T>(presult: PResult<T>, input: &str) -> Result<T, crate::error:
             remaining.to_string(),
         )),
         Err(err) => {
-            let message = convert_error(input, err);
+            let errors = err
+                .errors
+                .into_iter()
+                .filter(|(_, kind)| matches!(kind, VerboseErrorKind::Context(_)))
+                .collect();
+
+            let message = convert_error(input, VerboseError { errors });
             Err(crate::error::ParsingError::VerboseError(message))
         }
     }
