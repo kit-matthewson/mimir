@@ -16,7 +16,7 @@ fn test_file_parsing() {
         if path.extension().and_then(|s| s.to_str()) == Some("pl") {
             // Get contents and attempt to parse
             let content = std::fs::read_to_string(&path).unwrap();
-            let res = mimir::Program::new(&content, 0.5);
+            let res = mimir::Program::new(&content);
 
             assert!(
                 res.is_ok(),

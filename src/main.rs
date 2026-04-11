@@ -1,49 +1,36 @@
 fn main() -> Result<(), mimir::MimirError> {
     let fuzzy_program = r"
-trapezoidal(X, A, _, _, _, Y) :-
-    X < A,
-    Y = 0.
-trapezoidal(X, A, B, _, _, Y) :-
-    X >= A,
-    X <= B,
-    Y = (X - A) / (B - A).
-trapezoidal(X, _, B, C, _, Y) :-
-    X > B,
-    X < C,
-    Y = 1.
-trapezoidal(X, _, _, C, D, Y) :-
-    X >= C,
-    X <= D,
-    Y = (D - X) / (D - C).
-trapezoidal(X, _, _, _, D, Y) :-
-    X > D,
-    Y = 0.
+edge(a, b).
+edge(b, c).
+edge(c, d).
+edge(c, e).
 
-warm(X) :~
-    trapezoidal(X, 15, 20, 25, 30, Y),
-    Y.
+path(A, B) :- edge(A, B).
+path(A, B) :- edge(A, X), path(X, B).
 ";
 
-    let program = mimir::Program::new(fuzzy_program, 0.01)?;
+    let program = mimir::Program::new(fuzzy_program)?;
 
     println!("{program}");
 
     loop {
         // Read input from user
-        print!("?> ");
-        std::io::Write::flush(&mut std::io::stdout()).unwrap();
         let mut input = String::new();
-        std::io::stdin().read_line(&mut input).unwrap();
+        print!("?>");
+        std::io::Write::flush(&mut std::io::stdout()).expect("Failed to flush stdout");
+        std::io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read input");
         let query = input.trim();
 
         // Execute query and print results
-        let result = program.query(query);
+        let result = program.query(query, 0.01);
 
         let solutions = match result {
             Ok(solutions) => solutions,
             Err(e) => {
                 eprintln!("{e}");
-                continue;
+                return Ok(());
             }
         };
 

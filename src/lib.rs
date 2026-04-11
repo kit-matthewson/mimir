@@ -90,7 +90,7 @@ pub struct Program {
 
 impl Program {
     /// Parses and translates a Mini-Prolog program from a string, returning a `Program` that can be executed.
-    pub fn new(program: &str, truth_threshold: f64) -> Result<Self, MimirError> {
+    pub fn new(program: &str) -> Result<Self, MimirError> {
         let clauses = parser::program(program)?;
 
         let translated_clauses = clauses
@@ -100,20 +100,39 @@ impl Program {
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Program {
-            engine: engine::Engine::new(translated_clauses, truth_threshold),
+            engine: engine::Engine::new(translated_clauses),
             program_ast: clauses,
         })
     }
 
     /// Executes a query against the program, returning a vector of solutions.
-    pub fn query(&self, query: &str) -> Result<Vec<Solution>, MimirError> {
+    /// Performs a crisp query, treating any solution with a truth value >= 0.5 as true and any solution with a truth value < 0.5 as false.
+    pub fn crisp_query(&self, query: &str) -> Result<Vec<Solution>, MimirError> {
+        let solutions = self
+            .query(query, 0.5)?
+            .iter()
+            .map(|solution| Solution {
+                bindings: solution.bindings.clone(),
+                truth_value: if solution.truth_value >= 0.5 {
+                    1.0
+                } else {
+                    0.0
+                },
+            })
+            .collect();
+
+        Ok(solutions)
+    }
+
+    /// Executes a query against the program, returning a vector of solutions.
+    pub fn query(&self, query: &str, truth_threshold: f64) -> Result<Vec<Solution>, MimirError> {
         let goal = parser::query(query)?;
 
         let internal_query = translator::translate_query(goal)?;
 
         let engine_solutions = self
             .engine
-            .execute(internal_query.clone())
+            .execute(internal_query.clone(), truth_threshold)
             .map_err(MimirError::from)?;
 
         // Find the variables in the query so we know which bindings to return in the solutions
@@ -151,5 +170,63 @@ impl std::fmt::Display for Program {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_program() -> Program {
+        let program = r"
+edge(a, b).
+edge(b, c).
+edge(c, d).
+edge(c, e).
+
+path(A, B) :- edge(A, B).
+path(A, B) :- edge(A, X), path(X, B).
+";
+
+        Program::new(program).expect("sample program should parse")
+    }
+
+    #[test]
+    fn simple_edge_query_succeeds() {
+        let program = sample_program();
+
+        let solutions = program
+            .crisp_query("edge(a, b)")
+            .expect("query should execute");
+
+        assert!(!solutions.is_empty(), "expected edge(a, b) to succeed");
+    }
+
+    #[test]
+    fn recursive_path_with_constants_succeeds() {
+        let program = sample_program();
+
+        let solutions = program
+            .crisp_query("path(a, d)")
+            .expect("query should execute");
+
+        assert!(!solutions.is_empty(), "expected path(a, d) to succeed");
+    }
+
+    #[test]
+    fn recursive_path_with_variable_reaches_d() {
+        let program = sample_program();
+
+        let solutions = program
+            .crisp_query("path(a, X)")
+            .expect("query should execute");
+
+        let has_d = solutions.iter().any(|solution| {
+            solution.bindings().iter().any(|(var, val)| {
+                var.name() == "X" && matches!(val, engine::Value::Ground(functor, args) if functor == "d" && args.is_empty())
+            })
+        });
+
+        assert!(has_d, "expected path(a, X) to include X = d");
     }
 }

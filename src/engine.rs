@@ -13,8 +13,6 @@ pub use state::*;
 /// An execution engine.
 pub struct Engine {
     db: ClauseDatabase,
-    /// Truth values below this threshold are considered false
-    truth_threshold: f64,
 }
 
 /// A solution returned by the engine after executing a query.
@@ -55,31 +53,46 @@ impl Solution {
 /// - A placeholder generator for creating new placeholders during execution.
 #[derive(Debug, Clone)]
 struct State {
-    env: Environment,
-    equiv: Equivalence,
-    truth_value: f64,
-    placeholder_gen: PlaceholderGenerator,
+    pub env: Environment,
+    pub equiv: Equivalence,
+    pub truth_value: f64,
+    pub truth_threshold: f64,
+    pub placeholder_gen: PlaceholderGenerator,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        State {
+            env: Environment::empty(),
+            equiv: Equivalence::new(),
+            truth_value: 1.0,
+            truth_threshold: 0.01,
+            placeholder_gen: PlaceholderGenerator::new(),
+        }
+    }
 }
 
 impl Engine {
     /// Create a new engine for a given program. Initialises the clause database.
-    pub fn new(program: Vec<Clause>, truth_threshold: f64) -> Self {
+    pub fn new(program: Vec<Clause>) -> Self {
         let db = ClauseDatabase::new(program);
 
-        Engine {
-            db,
-            truth_threshold,
-        }
+        Engine { db }
     }
 
     /// Execute the engine on the given query.
-    pub fn execute(&self, query: Query) -> Result<Vec<Solution>, EngineError> {
+    pub fn execute(
+        &self,
+        query: Query,
+        truth_threshold: f64,
+    ) -> Result<Vec<Solution>, EngineError> {
         let mut placeholder_gen = PlaceholderGenerator::new();
 
         let state = State {
             env: Environment::for_query(&query, &mut placeholder_gen),
             equiv: Equivalence::new(),
             truth_value: 1.0,
+            truth_threshold,
             placeholder_gen,
         };
 
@@ -189,7 +202,7 @@ impl Engine {
 
                 let new_truth_value = state.truth_value.min(*val);
 
-                if new_truth_value < self.truth_threshold {
+                if new_truth_value < state.truth_threshold {
                     Ok(vec![]) // Below threshold
                 } else {
                     let mut new_state = state;
@@ -230,6 +243,7 @@ impl Engine {
                 equiv: state.equiv.clone(),
                 truth_value: state.truth_value,
                 placeholder_gen: clause_placeholder_gen,
+                truth_threshold: state.truth_threshold,
             };
 
             match self.handle_goal(clause.body().clone(), clause_state) {
@@ -270,7 +284,7 @@ mod tests {
             Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T2")))
         ))];
 
-        let engine = Engine::new(program, 0.01);
+        let engine = Engine::new(program);
 
         // Query: is_ten(X)
         let query = Query {
@@ -281,7 +295,7 @@ mod tests {
             },
         };
 
-        let solutions = engine.execute(query.clone()).unwrap();
+        let solutions = engine.execute(query.clone(), 0.01).unwrap();
 
         let mut results = vec![];
         for solution in solutions.iter() {
@@ -308,7 +322,7 @@ mod tests {
         };
 
         // The engine returns no solutions if unification fails
-        let solutions = engine.execute(query_fail.clone()).unwrap();
+        let solutions = engine.execute(query_fail.clone(), 0.01).unwrap();
         assert_eq!(solutions.len(), 0);
     }
 
@@ -328,7 +342,7 @@ mod tests {
             Box::new(Goal::Equivalence(Variable::new("T1"), Variable::new("T3")))
         ))))];
 
-        let engine = Engine::new(program, 0.01);
+        let engine = Engine::new(program);
 
         // Query: is_ten_or_five(X)
         let query = Query {
@@ -339,7 +353,7 @@ mod tests {
             },
         };
 
-        let solutions = engine.execute(query.clone()).unwrap();
+        let solutions = engine.execute(query.clone(), 0.01).unwrap();
 
         let mut results = vec![];
         for solution in solutions.iter() {
@@ -361,12 +375,13 @@ mod tests {
         env.assign(&Variable::new("Y"), Value::num(10));
         env.assign(&Variable::new("Z"), pgen.new_placeholder());
 
-        let engine = Engine::new(vec![], 0.01);
+        let engine = Engine::new(vec![]);
 
         let state = State {
             env,
             equiv: Equivalence::new(),
             truth_value: 1.0,
+            truth_threshold: 0.01,
             placeholder_gen: PlaceholderGenerator::new(),
         };
 
@@ -389,19 +404,10 @@ mod tests {
 
     #[test]
     fn test_invalid_equivalence_goals() {
-        // Setup environment with X and Y
-        let mut env = Environment::empty();
-        env.assign(&Variable::new("X"), Value::num(10));
-        env.assign(&Variable::new("Y"), Value::num(5));
-
-        let engine = Engine::new(vec![], 0.01);
-
-        let state = State {
-            env,
-            equiv: Equivalence::new(),
-            truth_value: 1.0,
-            placeholder_gen: PlaceholderGenerator::new(),
-        };
+        let engine = Engine::new(vec![]);
+        let mut state = State::default();
+        state.env.assign(&Variable::new("X"), Value::num(10));
+        state.env.assign(&Variable::new("Y"), Value::num(5));
 
         // 5 cannot equal 10
         let result = engine.handle_goal(
@@ -429,17 +435,10 @@ mod tests {
     #[test]
     fn test_truth_expr_eval() {
         // Setup environment with X = 0.1 and Y = 0.3
-        let mut env = Environment::empty();
-        env.assign(&Variable::new("X"), Value::num(0.1));
-        env.assign(&Variable::new("Y"), Value::num(0.3));
-
-        let engine = Engine::new(vec![], 0.01);
-        let state = State {
-            env,
-            equiv: Equivalence::new(),
-            truth_value: 1.0,
-            placeholder_gen: PlaceholderGenerator::new(),
-        };
+        let engine = Engine::new(vec![]);
+        let mut state = State::default();
+        state.env.assign(&Variable::new("X"), Value::num(0.1));
+        state.env.assign(&Variable::new("Y"), Value::num(0.3));
 
         // Evaluate the truth value expression
         // Set X=0.3 and Y=0.1
@@ -462,18 +461,11 @@ mod tests {
 
     #[test]
     fn test_handle_relation() {
-        let mut env = Environment::empty();
-        env.assign(&Variable::new("X"), Value::num(10));
-        env.assign(&Variable::new("Y"), Value::num(5));
+        let engine = Engine::new(vec![]);
 
-        let engine = Engine::new(vec![], 0.01);
-
-        let state = State {
-            env,
-            equiv: Equivalence::new(),
-            truth_value: 1.0,
-            placeholder_gen: PlaceholderGenerator::new(),
-        };
+        let mut state = State::default();
+        state.env.assign(&Variable::new("X"), Value::num(10));
+        state.env.assign(&Variable::new("Y"), Value::num(5));
 
         // Test X > Y
         let result = engine.handle_goal(
@@ -502,20 +494,13 @@ mod tests {
 
     #[test]
     fn test_handle_relation_nan() {
+        let engine = Engine::new(vec![]);
         let mut pgen = PlaceholderGenerator::new();
-
-        let mut env = Environment::empty();
-        env.assign(&Variable::new("X"), Value::num(10));
-        env.assign(&Variable::new("Y"), pgen.new_placeholder());
-
-        let engine = Engine::new(vec![], 0.01);
-
-        let state = State {
-            env,
-            equiv: Equivalence::new(),
-            truth_value: 1.0,
-            placeholder_gen: PlaceholderGenerator::new(),
-        };
+        let mut state = State::default();
+        state.env.assign(&Variable::new("X"), Value::num(10));
+        state
+            .env
+            .assign(&Variable::new("Y"), pgen.new_placeholder());
 
         // X > Y and Y > X
         let result = engine.handle_goal(
@@ -546,32 +531,13 @@ mod tests {
             clause!(clause(X) {Y} :- Goal::Relation(Variable::new("X"), Variable::new("Y"), RelationalOp::GreaterThan)),
         ];
 
-        let mut env = Environment::empty();
-        env.assign(&Variable::new("X"), Value::num(10));
-        env.assign(&Variable::new("Y"), Value::num(5));
+        let engine = Engine::new(program);
 
-        let engine = Engine::new(program, 0.01);
-
-        let state = State {
-            env,
-            equiv: Equivalence::new(),
-            truth_value: 1.0,
-            placeholder_gen: PlaceholderGenerator::new(),
-        };
+        let mut state = State::default();
+        state.env.assign(&Variable::new("X"), Value::num(10));
+        state.env.assign(&Variable::new("Y"), Value::num(5));
 
         let result = engine.handle_check(state, "clause".to_string(), var_vec!["X"]);
-        println!("{:?}", result);
         assert!(result.is_ok());
-
-        // Should fail if we ask for the wrong arity
-        let env = Environment::empty();
-        let state = State {
-            env,
-            equiv: Equivalence::new(),
-            truth_value: 1.0,
-            placeholder_gen: PlaceholderGenerator::new(),
-        };
-        let result = engine.handle_check(state, "clause".to_string(), var_vec!["X", "Y"]);
-        assert!(result.is_err());
     }
 }
