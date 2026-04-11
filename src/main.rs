@@ -48,7 +48,7 @@ path(A, B) :- edge(A, X), path(X, B).
         for solution in &solutions {
             if solution.bindings().is_empty() {
                 if fuzzy {
-                    println!("  1.00.");
+                    println!("  {:.2}.", solution.truth_value());
                 } else {
                     println!("  true.");
                 }
