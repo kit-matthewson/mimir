@@ -192,7 +192,7 @@
   // )
 
   // Display block code with padding.
-  show raw.where(block: true): block.with(inset: (x: 5pt), breakable: false)
+  show raw.where(block: true): block.with(inset: (x: 5pt), breakable: true)
 
   // Break large tables across pages.
   show figure.where(kind: table): set block(breakable: true)
@@ -228,6 +228,8 @@
       }
       it
     }
+
+    pagebreak(weak: true)
     body
   }
 
