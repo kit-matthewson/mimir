@@ -99,11 +99,21 @@ impl std::fmt::Display for Value {
                     return write!(f, "{}", functor);
                 }
 
+                // Special case for cons lists
+                if functor == "." && args.len() == 2 {
+                    if matches!(&args[1], Value::Ground(functor, _) if functor == "nil") {
+                        return write!(f, "{}", args[0]);
+                    }
+
+                    return write!(f, "({}, {})", args[0], args[1]);
+                }
+
                 let args_str = args
                     .iter()
                     .map(|arg| format!("{}", arg))
                     .collect::<Vec<String>>()
                     .join(", ");
+
                 write!(f, "{}({})", functor, args_str)
             }
             Value::Placeholder(id) => write!(f, "_{}", id),
