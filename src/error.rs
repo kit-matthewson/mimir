@@ -41,6 +41,10 @@ pub enum TranslationError {
 pub enum EngineError {
     #[error("invalid clause: clause matching '{0}/{1}' not found.")]
     ClauseNotFound(String, usize),
+    #[error("failed to start execution worker thread: {0}")]
+    ThreadSpawn(std::io::Error),
+    #[error("execution worker thread panicked")]
+    ThreadPanicked,
     #[error("undefined variable: '{0}'")]
     UndefinedVar(Variable),
     #[error("unexpected number of parameters: expected {expected}, got {got}")]

@@ -5,6 +5,8 @@
 mod representation;
 mod state;
 
+use std::thread;
+
 use crate::error::EngineError;
 
 pub use representation::*;
@@ -73,6 +75,8 @@ impl Default for State {
 }
 
 impl Engine {
+    const EXECUTION_STACK_SIZE: usize = 32 * 1024 * 1024;
+
     /// Create a new engine for a given program. Initialises the clause database.
     pub fn new(program: Vec<Clause>) -> Self {
         let db = ClauseDatabase::new(program);
@@ -101,7 +105,15 @@ impl Engine {
             placeholder_gen,
         };
 
-        let final_states = self.handle_goal(query.goal, state)?;
+        let final_states = thread::scope(|scope| {
+            let handle = thread::Builder::new()
+                .name("mimir-executor".to_string())
+                .stack_size(Self::EXECUTION_STACK_SIZE)
+                .spawn_scoped(scope, || self.handle_goal(query.goal, state))
+                .map_err(EngineError::ThreadSpawn)?;
+
+            handle.join().map_err(|_| EngineError::ThreadPanicked)?
+        })?;
 
         // Solutions are actually just variable bindings from the final states
         let mut solutions = final_states
