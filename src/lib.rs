@@ -92,10 +92,43 @@ impl Solution {
         &self.bindings
     }
 
+    /// Get the value of a specific variable in this solution, if it exists.
+    pub fn get(&self, var_name: &str) -> Option<&engine::Value> {
+        self.bindings
+            .iter()
+            .find(|(var, _)| engine::Variable::new(var_name) == *var)
+            .map(|(_, val)| val)
+    }
+
     /// Get the truth value of this solution.
     pub fn truth_value(&self) -> f64 {
         self.truth_value
     }
+}
+
+/// Converts a cons-list represented as nested Ground terms with functor '.' into a Rust vector of Values.
+pub fn flatten_list(value: &engine::Value) -> Option<Vec<engine::Value>> {
+    let mut result = Vec::new();
+    let mut current = value;
+
+    while let engine::Value::Ground(functor, args) = current {
+        if let engine::Value::Ground(functor, args) = current
+            && functor == "nil"
+            && args.is_empty()
+        {
+            return Some(result); // Successfully reached the end of the list
+        }
+
+        if functor != "." || args.len() != 2 {
+            return None; // Not a valid cons cell
+        }
+
+        result.push(args[0].clone()); // Head of the list
+
+        current = &args[1]; // Move to the tail
+    }
+
+    None // Not a valid list
 }
 
 /// A Mini-Prolog program, on which queries can be executed.
