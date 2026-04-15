@@ -1,79 +1,88 @@
+use std::{
+    env, fs,
+    io::{self, Write},
+};
+
 fn main() -> Result<(), mimir::MimirError> {
-    let fuzzy_program = r"
-edge(a, b).
-edge(b, c) :~ 0.9.
-edge(c, d).
-edge(c, e) :~ 0.8.
+    let program_path = env::args().nth(1).expect("usage: mimir <program_file>");
 
-path(A, B) :- edge(A, B).
-path(A, B) :- edge(A, X), path(X, B).
-";
-    let program = mimir::Program::new(fuzzy_program)?;
+    let program_source = fs::read_to_string(&program_path).expect("failed to read program file");
+    let program = mimir::Program::new(&program_source)?;
 
-    println!("{fuzzy_program}");
+    println!("Loaded program from {program_path}:");
+    println!("{}", program);
+    println!();
+
+    println!("Enter queries with optional leading ~ for fuzzy execution.");
+    println!("Type exit. to leave.");
+    println!();
+
+    let stdin = io::stdin();
+    let mut input = String::new();
 
     loop {
-        // Read input from user
-        let mut input = String::new();
-        print!("\n?>");
-        std::io::Write::flush(&mut std::io::stdout()).expect("Failed to flush stdout");
-        std::io::stdin()
-            .read_line(&mut input)
-            .expect("Failed to read input");
-        let query = input.trim();
+        print!("?- ");
+        io::stdout().flush().expect("failed to flush stdout");
 
-        // If the first char is ~, strip it and treat as a fuzzy query
-        let (query, fuzzy) = if let Some(stripped) = query.strip_prefix('~') {
-            (stripped.trim(), true)
-        } else {
-            (query, false)
+        input.clear();
+        if stdin.read_line(&mut input).expect("failed to read input") == 0 {
+            println!();
+            break;
+        }
+
+        let query = input.strip_suffix('.').unwrap_or(&input).trim();
+        if query.eq_ignore_ascii_case("exit") {
+            break;
+        }
+
+        let (is_fuzzy, query) = match query.strip_prefix('~') {
+            Some(rest) => (true, rest.trim()),
+            None => (false, query),
         };
 
-        // Execute query and print results
-        let result = if fuzzy {
+        let solutions = if is_fuzzy {
             program.fuzzy_query(query, 0.01)
         } else {
             program.crisp_query(query)
         };
 
-        let solutions = match result {
+        let solutions = match solutions {
             Ok(solutions) => solutions,
-            Err(e) => {
-                eprintln!("{e}");
-                return Ok(());
+            Err(err) => {
+                eprintln!("{err}");
+                continue;
             }
         };
 
-        for solution in &solutions {
-            if solution.bindings().is_empty() {
-                if fuzzy {
-                    println!("  {:.2}.", solution.truth_value());
-                } else {
-                    println!("  true.");
-                }
-
-                continue;
-            }
-
-            print!(" ");
-
-            for (i, (var, val)) in solution.bindings().iter().enumerate() {
-                if i > 0 {
-                    print!(", ");
-                }
-
-                print!("{} = {}", var.name(), val);
-            }
-
-            if fuzzy {
-                print!("  {:.2}.", solution.truth_value());
-            }
-
-            println!();
+        if solutions.is_empty() {
+            println!("false.");
+            continue;
         }
 
-        if solutions.is_empty() {
-            println!(" false.");
+        for (index, solution) in solutions.iter().enumerate() {
+            if index > 0 {
+                println!();
+            }
+
+            let bindings = solution.bindings();
+            if bindings.is_empty() {
+                print!("true");
+            } else {
+                let rendered_bindings = bindings
+                    .iter()
+                    .map(|(variable, value)| format!("{} = {}", variable, value))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                print!("{}", rendered_bindings);
+            }
+
+            if is_fuzzy {
+                print!(", truth = {:.3}", solution.truth_value());
+            }
+
+            println!(".");
         }
     }
+
+    Ok(())
 }
