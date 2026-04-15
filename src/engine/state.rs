@@ -273,7 +273,19 @@ impl Equivalence {
     /// For instance, if `A -> B` and `B -> C`, then the representative of all three values is `C`.
     pub fn set_representative(&self, value: &Value) -> Result<Value, EngineError> {
         if let Some(value) = self.equiv.get(value) {
-            self.set_representative(value)
+            let repr = self.set_representative(value)?;
+
+            match repr {
+                Value::Ground(functor, args) => {
+                    let resolved_args = args
+                        .iter()
+                        .map(|arg| self.set_representative(arg))
+                        .collect::<Result<Vec<_>, EngineError>>()?;
+
+                    Ok(Value::Ground(functor, resolved_args))
+                }
+                _ => Ok(repr),
+            }
         } else {
             Ok(value.clone())
         }

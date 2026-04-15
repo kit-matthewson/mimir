@@ -4,9 +4,11 @@
 //! into the simplified internal representation used by the Mini-Prolog engine.
 
 use crate::{engine, error::TranslationError, parser::ast};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Translation state for managing unique variable names.
+///
+/// TODO: Should have a function for generating new temp/wildcard variables and incrementing the counter
 struct TranslationState {
     /// Counter for generating unique temporary variable names.
     temp_var_counter: usize,
@@ -59,6 +61,19 @@ pub fn translate_clause(clause: ast::Clause) -> Result<engine::Clause, Translati
         }
     }
 
+    // Get variables from the head
+    let mut head_vars = HashSet::new();
+    for term in &clause.head.params {
+        collect_term_variables(term, &mut head_vars);
+    }
+
+    for var_name in head_vars {
+        if !param_names.contains(&var_name) && !local_var_names.contains(&var_name) {
+            local_vars.push(engine::Variable::new(&var_name));
+            local_var_names.insert(var_name);
+        }
+    }
+
     // Create the final clause
     let head_symbol = engine::Symbol::new(&clause.head.functor, params, local_vars);
 
@@ -94,6 +109,7 @@ fn translate_clause_head(
 ) -> Result<(Vec<engine::Variable>, Vec<engine::Goal>), TranslationError> {
     let mut params = Vec::new();
     let mut unification_goals = Vec::new();
+    let mut seen_head_vars: HashMap<String, engine::Variable> = HashMap::new();
 
     for param in &head.params {
         match param {
@@ -101,7 +117,20 @@ fn translate_clause_head(
                 // Variables go directly into parameters
                 match var {
                     ast::Variable::Var(name) => {
-                        params.push(engine::Variable::new(name.clone()));
+                        if let Some(existing) = seen_head_vars.get(name) {
+                            // For repeated head variables use a fresh parameter and add unification goal to unify with the first occurrence
+                            let temp_var = format!("_T{}", state.temp_var_counter);
+                            state.temp_var_counter += 1;
+                            let temp_engine_var = engine::Variable::new(&temp_var);
+
+                            params.push(temp_engine_var.clone());
+                            unification_goals
+                                .push(engine::Goal::Equivalence(temp_engine_var, existing.clone()));
+                        } else {
+                            let engine_var = engine::Variable::new(name.clone());
+                            params.push(engine_var.clone());
+                            seen_head_vars.insert(name.clone(), engine_var);
+                        }
                     }
                     ast::Variable::Wildcard => {
                         // Each wildcard gets a unique variable
@@ -119,8 +148,9 @@ fn translate_clause_head(
 
                 params.push(temp_engine_var.clone());
 
-                // Convert the term to an RHSTerm and create an assignment goal
-                let rhs_term = term_to_rhs_term(param, state)?;
+                // Convert the term to an RHSTerm and create any nested assignment goals first
+                let (rhs_term, mut rhs_goals) = term_to_rhs_term(param, state)?;
+                unification_goals.append(&mut rhs_goals);
                 unification_goals.push(engine::Goal::Assign(temp_engine_var, rhs_term));
             }
         }
@@ -173,18 +203,15 @@ fn translate_goal(
 ) -> Result<engine::Goal, TranslationError> {
     match goal {
         ast::Goal::Relation(left, relational_op, right) => {
-            // Relation operands must be variables for the engine. Non-variable
-            // terms are normalised into temp variables with assignment goals.
-            let (left_var, mut left_pre_goals) = term_to_variable_for_relation(left, state)?;
+            // Relation operands must be variables for the engine. Non-variable terms are normalised into temp variables with assignment goals.
+            let (left_var, mut pre_goals) = term_to_variable_for_relation(left, state)?;
             let (right_var, right_pre_goals) = term_to_variable_for_relation(right, state)?;
+            pre_goals.extend(right_pre_goals);
+
             let engine_op = translate_relational_op(relational_op);
             let mut relation_goal = engine::Goal::Relation(left_var, right_var, engine_op);
 
-            left_pre_goals.extend(right_pre_goals);
-
-            // Preserve source order: evaluate generated assignments first,
-            // then evaluate the relation itself.
-            for pre_goal in left_pre_goals.into_iter().rev() {
+            for pre_goal in pre_goals.into_iter().rev() {
                 relation_goal =
                     engine::Goal::Conjunction(Box::new(pre_goal), Box::new(relation_goal));
             }
@@ -193,8 +220,14 @@ fn translate_goal(
         }
         ast::Goal::Assign(variable, rhs) => {
             let engine_var = ast_variable_to_engine(variable, state);
-            let rhs_term = translate_rhs(rhs, state)?;
-            Ok(engine::Goal::Assign(engine_var, rhs_term))
+            let (rhs_term, rhs_goals) = translate_rhs(rhs, state)?;
+
+            let mut assign_goal = engine::Goal::Assign(engine_var, rhs_term);
+            for pre_goal in rhs_goals.into_iter().rev() {
+                assign_goal = engine::Goal::Conjunction(Box::new(pre_goal), Box::new(assign_goal));
+            }
+
+            Ok(assign_goal)
         }
         ast::Goal::Check(compound) => {
             let functor = compound.functor.clone();
@@ -234,41 +267,30 @@ fn term_to_variable_for_relation(
             state.temp_var_counter += 1;
 
             let temp_engine_var = engine::Variable::new(&temp_var);
-            let rhs_term = term_to_rhs_term(term, state)?;
+            let (rhs_term, mut pre_goals) = term_to_rhs_term(term, state)?;
             let assign_goal = engine::Goal::Assign(temp_engine_var.clone(), rhs_term);
 
-            Ok((temp_engine_var, vec![assign_goal]))
-        }
-    }
-}
+            pre_goals.push(assign_goal);
 
-/// Convert an AST term to a variable, creating a temp variable if needed.
-/// Lists are desugared to cons structures inline.
-fn term_to_variable(term: &ast::Term, state: &mut TranslationState) -> engine::Variable {
-    match term {
-        ast::Term::Var(var) => ast_variable_to_engine(var, state),
-        ast::Term::List(_) | ast::Term::Compound(_) | ast::Term::Atom(_) | ast::Term::Num(_) => {
-            // Any non-variable term gets a temp variable
-            let temp_var = format!("_T{}", state.temp_var_counter);
-            state.temp_var_counter += 1;
-            engine::Variable::new(temp_var)
+            Ok((temp_engine_var, pre_goals))
         }
     }
 }
 
 /// Convert a list to a cons-cell term recursively.
-fn desugar_list_to_term(items: &[ast::Term]) -> ast::Term {
-    items.iter().rfold(
+fn desugar_list_to_term(list: &ast::ListTerm) -> ast::Term {
+    let tail = list.tail.as_deref().cloned().unwrap_or_else(|| {
         ast::Term::Atom(ast::Atom {
             name: "nil".to_string(),
-        }),
-        |acc, item| {
-            ast::Term::Compound(ast::Compound {
-                functor: ".".to_string(),
-                params: vec![item.clone(), acc],
-            })
-        },
-    )
+        })
+    });
+
+    list.items.iter().rfold(tail, |acc, item| {
+        ast::Term::Compound(ast::Compound {
+            functor: ".".to_string(),
+            params: vec![item.clone(), acc],
+        })
+    })
 }
 
 /// Convert an AST variable to an engine variable.
@@ -283,38 +305,42 @@ fn ast_variable_to_engine(var: &ast::Variable, state: &mut TranslationState) -> 
     }
 }
 
-/// Convert an AST term to an engine RHSTerm.
+/// Convert an AST term to an engine RHSTerm and generate any necessary pre-goals.
+///
 /// Lists are desugared to cons structures inline during this conversion.
 fn term_to_rhs_term(
     term: &ast::Term,
     state: &mut TranslationState,
-) -> Result<engine::RHSTerm, TranslationError> {
+) -> Result<(engine::RHSTerm, Vec<engine::Goal>), TranslationError> {
     match term {
-        ast::Term::Num(n) => Ok(engine::RHSTerm::Num(*n)),
+        ast::Term::Num(n) => Ok((engine::RHSTerm::Num(*n), vec![])),
         ast::Term::Atom(atom) => {
             // An atom is a symbol with no parameters
             let symbol = engine::Symbol::new(&atom.name, vec![], vec![]);
-            Ok(engine::RHSTerm::Sym(symbol))
+            Ok((engine::RHSTerm::Sym(symbol), vec![]))
         }
         ast::Term::Var(var) => {
             // A variable is wrapped in a symbol
             let engine_var = ast_variable_to_engine(var, state);
             let symbol = engine::Symbol::new("", vec![engine_var], vec![]);
-            Ok(engine::RHSTerm::Sym(symbol))
+            Ok((engine::RHSTerm::Sym(symbol), vec![]))
         }
         ast::Term::Compound(compound) => {
-            let params: Vec<engine::Variable> = compound
-                .params
-                .iter()
-                .map(|t| term_to_variable(t, state))
-                .collect();
+            let mut params = Vec::new();
+            let mut pre_goals = Vec::new();
+
+            for term in &compound.params {
+                let (param_var, mut param_pre_goals) = term_to_variable_for_relation(term, state)?;
+                params.push(param_var);
+                pre_goals.append(&mut param_pre_goals);
+            }
 
             let symbol = engine::Symbol::new(&compound.functor, params, vec![]);
-            Ok(engine::RHSTerm::Sym(symbol))
+            Ok((engine::RHSTerm::Sym(symbol), pre_goals))
         }
-        ast::Term::List(items) => {
+        ast::Term::List(list) => {
             // Desugar list into cons structure and convert to RHSTerm
-            let desugared = desugar_list_to_term(items);
+            let desugared = desugar_list_to_term(list);
             term_to_rhs_term(&desugared, state)
         }
     }
@@ -322,23 +348,26 @@ fn term_to_rhs_term(
 
 /// Translate an AST RHS to an engine RHSTerm.
 fn translate_rhs(
-    rhs: &ast::RHS,
+    rhs: &ast::Rhs,
     state: &mut TranslationState,
-) -> Result<engine::RHSTerm, TranslationError> {
+) -> Result<(engine::RHSTerm, Vec<engine::Goal>), TranslationError> {
     match rhs {
-        ast::RHS::Compound(compound) => {
-            let params: Vec<engine::Variable> = compound
-                .params
-                .iter()
-                .map(|t| term_to_variable(t, state))
-                .collect();
+        ast::Rhs::Compound(compound) => {
+            let mut params = Vec::new();
+            let mut pre_goals = Vec::new();
+
+            for term in &compound.params {
+                let (param_var, mut param_pre_goals) = term_to_variable_for_relation(term, state)?;
+                params.push(param_var);
+                pre_goals.append(&mut param_pre_goals);
+            }
 
             let symbol = engine::Symbol::new(&compound.functor, params, vec![]);
-            Ok(engine::RHSTerm::Sym(symbol))
+            Ok((engine::RHSTerm::Sym(symbol), pre_goals))
         }
-        ast::RHS::Expr(expr) => {
+        ast::Rhs::Expr(expr) => {
             let engine_expr = translate_arith_expr(expr, state);
-            Ok(engine::RHSTerm::Expr(engine_expr))
+            Ok((engine::RHSTerm::Expr(engine_expr), vec![]))
         }
     }
 }
@@ -426,9 +455,13 @@ fn collect_term_variables(term: &ast::Term, vars: &mut HashSet<String>) {
                 collect_term_variables(param, vars);
             }
         }
-        ast::Term::List(items) => {
-            for item in items {
+        ast::Term::List(list) => {
+            for item in &list.items {
                 collect_term_variables(item, vars);
+            }
+
+            if let Some(tail) = &list.tail {
+                collect_term_variables(tail, vars);
             }
         }
         _ => {}
@@ -436,14 +469,14 @@ fn collect_term_variables(term: &ast::Term, vars: &mut HashSet<String>) {
 }
 
 /// Collect variables from an RHS expression.
-fn collect_rhs_variables(rhs: &ast::RHS, vars: &mut HashSet<String>) {
+fn collect_rhs_variables(rhs: &ast::Rhs, vars: &mut HashSet<String>) {
     match rhs {
-        ast::RHS::Compound(compound) => {
+        ast::Rhs::Compound(compound) => {
             for param in &compound.params {
                 collect_term_variables(param, vars);
             }
         }
-        ast::RHS::Expr(expr) => {
+        ast::Rhs::Expr(expr) => {
             collect_arith_expr_variables(expr, vars);
         }
     }
@@ -723,7 +756,7 @@ mod tests {
             }),
             ast::Goal::Assign(
                 ast::Variable::Var("Y".to_string()),
-                ast::RHS::Expr(ast::ArithExpr::Num(ordered_float::OrderedFloat::from(1.0))),
+                ast::Rhs::Expr(ast::ArithExpr::Num(ordered_float::OrderedFloat::from(1.0))),
             ),
         ];
 
@@ -745,6 +778,35 @@ mod tests {
                     engine::Variable::new("Y"),
                     engine::RHSTerm::Expr(engine::Expression::num(1.0)),
                 )),
+            )
+        );
+    }
+
+    #[test]
+    fn term_to_rhs_term_preserves_explicit_list_tail() {
+        let mut state = TranslationState {
+            temp_var_counter: 0,
+            wildcard_counter: 0,
+        };
+
+        let term = ast::Term::List(ast::ListTerm {
+            items: vec![ast::Term::Var(ast::Variable::Var("H".to_string()))],
+            tail: Some(Box::new(ast::Term::Var(ast::Variable::Var(
+                "T".to_string(),
+            )))),
+        });
+
+        let rhs = term_to_rhs_term(&term, &mut state).unwrap();
+
+        assert_eq!(
+            rhs,
+            (
+                engine::RHSTerm::Sym(engine::Symbol::new(
+                    ".",
+                    vec![engine::Variable::new("H"), engine::Variable::new("T")],
+                    vec![]
+                )),
+                vec![]
             )
         );
     }

@@ -256,10 +256,9 @@ impl Engine {
                     // The equivalent to Dewey's 'Restore' goal for the recursive method
                     for clause_result_state in clause_result_states {
                         let mut result_state = state.clone();
-                        // Keep the equivalence from the clause execution
                         result_state.equiv = clause_result_state.equiv;
-                        // Keep the truth value from the clause execution
                         result_state.truth_value = clause_result_state.truth_value;
+                        result_state.placeholder_gen = clause_result_state.placeholder_gen;
                         resultant_states.push(result_state);
                     }
                 }

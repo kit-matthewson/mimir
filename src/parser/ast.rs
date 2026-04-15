@@ -70,7 +70,7 @@ pub enum Goal {
     /// A relational operator between two terms.
     Relation(Term, RelationalOp, Term),
     /// An assignment expression.
-    Assign(Variable, RHS),
+    Assign(Variable, Rhs),
     /// A compound term to check.
     Check(Compound),
 }
@@ -96,8 +96,8 @@ pub enum Term {
     Num(Number),
     /// A variable, starting with an uppercase letter.
     Var(Variable),
-    /// A list.
-    List(Vec<Term>),
+    /// A list with an optional explicit tail.
+    List(ListTerm),
     /// A compound term with a functor and parameter list.
     Compound(Compound),
 }
@@ -108,9 +108,44 @@ impl std::fmt::Display for Term {
             Term::Atom(atom) => write!(f, "{}", atom),
             Term::Num(n) => write!(f, "{}", n),
             Term::Var(var) => write!(f, "{}", var),
-            Term::List(list) => write!(f, "{:?}", list),
+            Term::List(list) => write!(f, "{}", list),
             Term::Compound(compound) => write!(f, "{}", compound),
         }
+    }
+}
+
+/// A list term.
+///
+/// Represents both regular lists like `[a, b, c]` and head-tail lists like `[H|T]`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ListTerm {
+    /// The explicit elements at the front of the list.
+    pub items: Vec<Term>,
+    /// Optional tail term after `|`.
+    pub tail: Option<Box<Term>>,
+}
+
+impl std::fmt::Display for ListTerm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[")?;
+
+        for (i, item) in self.items.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+
+            write!(f, "{}", item)?;
+        }
+
+        if let Some(tail) = &self.tail {
+            if !self.items.is_empty() {
+                write!(f, " | {}", tail)?;
+            } else {
+                write!(f, "| {}", tail)?;
+            }
+        }
+
+        write!(f, "]")
     }
 }
 
@@ -203,18 +238,18 @@ impl std::fmt::Display for RelationalOp {
 ///
 /// These can be compounds or arithmetic expressions.
 #[derive(Debug, Clone, PartialEq)]
-pub enum RHS {
+pub enum Rhs {
     /// A compound.
     Compound(Compound),
     /// An arithmetic expression.
     Expr(ArithExpr),
 }
 
-impl std::fmt::Display for RHS {
+impl std::fmt::Display for Rhs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RHS::Compound(compound) => write!(f, "{}", compound),
-            RHS::Expr(expr) => write!(f, "{}", expr),
+            Rhs::Compound(compound) => write!(f, "{}", compound),
+            Rhs::Expr(expr) => write!(f, "{}", expr),
         }
     }
 }

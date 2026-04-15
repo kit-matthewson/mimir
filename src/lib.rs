@@ -78,6 +78,7 @@ pub mod translator;
 pub use error::MimirError;
 
 /// The response from executing a query, which may contain multiple solutions.
+#[derive(Debug, Clone)]
 pub struct Solution {
     /// The variable bindings for this solution, mapping variables to their values.
     bindings: Vec<(engine::Variable, engine::Value)>,
@@ -113,8 +114,6 @@ impl Program {
             .into_iter()
             .map(translator::translate_clause)
             .collect::<Result<Vec<_>, _>>()?;
-
-        println!("Translated clauses:\n{:#?}", translated_clauses);
 
         Ok(Program {
             engine: engine::Engine::new(translated_clauses),

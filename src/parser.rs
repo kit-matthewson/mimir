@@ -196,7 +196,7 @@ impl Parseable for ast::Goal {
             |input| {
                 let (input, var) = context("variable", ws(ast::Variable::parse)).parse(input)?;
                 let (input, _) = context("operator", ws(tag("="))).parse(input)?;
-                let (input, rhs) = context("rhs term", ws(ast::RHS::parse)).parse(input)?;
+                let (input, rhs) = context("rhs term", ws(ast::Rhs::parse)).parse(input)?;
 
                 Ok((input, Self::Assign(var, rhs)))
             },
@@ -229,14 +229,35 @@ impl Parseable for ast::Term {
             |input| {
                 let (input, _) = tag("[").parse(input)?;
 
-                // Prolog lists can be seperated by ',' or '|'
-                let (input, list) =
-                    separated_list0(ws(alt((tag(","), tag("|")))), ast::Term::parse)
-                        .parse(input)?;
+                // Empty list: []
+                if let Ok((input, _)) = ws(tag("]")).parse(input) {
+                    return Ok((
+                        input,
+                        Self::List(ast::ListTerm {
+                            items: vec![],
+                            tail: None,
+                        }),
+                    ));
+                }
 
-                let (input, _) = context("closing bracket", tag("]")).parse(input)?;
+                // Non-empty list with optional explicit tail:
+                // [A, B, C] or [H | T] or [A, B | T]
+                let (input, first) = ast::Term::parse(input)?;
+                let (input, mut rest_items) =
+                    many0(preceded(ws(tag(",")), ast::Term::parse)).parse(input)?;
+                let (input, tail) = opt(preceded(ws(tag("|")), ast::Term::parse)).parse(input)?;
+                let (input, _) = context("closing bracket", ws(tag("]"))).parse(input)?;
 
-                Ok((input, Self::List(list)))
+                let mut items = vec![first];
+                items.append(&mut rest_items);
+
+                Ok((
+                    input,
+                    Self::List(ast::ListTerm {
+                        items,
+                        tail: tail.map(Box::new),
+                    }),
+                ))
             },
             |input| {
                 let (input, num) = number.parse(input)?;
@@ -374,14 +395,14 @@ impl Parseable for ast::RelationalOp {
     }
 }
 
-impl Parseable for ast::RHS {
+impl Parseable for ast::Rhs {
     /// The right-hand side of an assignment can be a Term or an ArithExpr.
     ///
     /// # Example
     /// ```
     /// # use mimir::parser::{ast, Parseable};
     /// let input = "(X + 5)";
-    /// let (_, rhs) = ast::RHS::parse(input).unwrap();
+    /// let (_, rhs) = ast::Rhs::parse(input).unwrap();
     ///
     /// assert_eq!(rhs.to_string(), input);
     /// ```
@@ -573,7 +594,7 @@ mod tests {
                 "X = 5",
                 ast::Goal::Assign(
                     ast::Variable::Var("X".to_string()),
-                    ast::RHS::Expr(ast::ArithExpr::Num(OrderedFloat::from(5.0))),
+                    ast::Rhs::Expr(ast::ArithExpr::Num(OrderedFloat::from(5.0))),
                 ),
             ),
             (
@@ -691,38 +712,64 @@ mod tests {
         let cases = vec![
             (
                 "[1, 2, 3]",
-                vec![
-                    ast::Term::Num(OrderedFloat::from(1.0)),
-                    ast::Term::Num(OrderedFloat::from(2.0)),
-                    ast::Term::Num(OrderedFloat::from(3.0)),
-                ],
+                ast::ListTerm {
+                    items: vec![
+                        ast::Term::Num(OrderedFloat::from(1.0)),
+                        ast::Term::Num(OrderedFloat::from(2.0)),
+                        ast::Term::Num(OrderedFloat::from(3.0)),
+                    ],
+                    tail: None,
+                },
             ),
             (
                 "[1, 2]",
-                vec![
-                    ast::Term::Num(OrderedFloat::from(1.0)),
-                    ast::Term::Num(OrderedFloat::from(2.0)),
-                ],
+                ast::ListTerm {
+                    items: vec![
+                        ast::Term::Num(OrderedFloat::from(1.0)),
+                        ast::Term::Num(OrderedFloat::from(2.0)),
+                    ],
+                    tail: None,
+                },
             ),
-            ("[1]", vec![ast::Term::Num(OrderedFloat::from(1.0))]),
-            ("[]", vec![]),
+            (
+                "[1]",
+                ast::ListTerm {
+                    items: vec![ast::Term::Num(OrderedFloat::from(1.0))],
+                    tail: None,
+                },
+            ),
+            (
+                "[]",
+                ast::ListTerm {
+                    items: vec![],
+                    tail: None,
+                },
+            ),
             (
                 "[H | T]",
-                vec![
-                    ast::Term::Var(ast::Variable::Var("H".to_string())),
-                    ast::Term::Var(ast::Variable::Var("T".to_string())),
-                ],
+                ast::ListTerm {
+                    items: vec![ast::Term::Var(ast::Variable::Var("H".to_string()))],
+                    tail: Some(Box::new(ast::Term::Var(ast::Variable::Var(
+                        "T".to_string(),
+                    )))),
+                },
             ),
             (
                 "[1, 2, [A, B]]",
-                vec![
-                    ast::Term::Num(OrderedFloat::from(1.0)),
-                    ast::Term::Num(OrderedFloat::from(2.0)),
-                    ast::Term::List(vec![
-                        ast::Term::Var(ast::Variable::Var("A".to_string())),
-                        ast::Term::Var(ast::Variable::Var("B".to_string())),
-                    ]),
-                ],
+                ast::ListTerm {
+                    items: vec![
+                        ast::Term::Num(OrderedFloat::from(1.0)),
+                        ast::Term::Num(OrderedFloat::from(2.0)),
+                        ast::Term::List(ast::ListTerm {
+                            items: vec![
+                                ast::Term::Var(ast::Variable::Var("A".to_string())),
+                                ast::Term::Var(ast::Variable::Var("B".to_string())),
+                            ],
+                            tail: None,
+                        }),
+                    ],
+                    tail: None,
+                },
             ),
         ];
 
@@ -787,11 +834,11 @@ mod tests {
         let cases = vec![
             (
                 "X",
-                ast::RHS::Expr(ast::ArithExpr::Var(ast::Variable::Var("X".to_string()))),
+                ast::Rhs::Expr(ast::ArithExpr::Var(ast::Variable::Var("X".to_string()))),
             ),
             (
                 "(X + 5)",
-                ast::RHS::Expr(ast::ArithExpr::Expr(
+                ast::Rhs::Expr(ast::ArithExpr::Expr(
                     Box::new(ast::ArithExpr::Var(ast::Variable::Var("X".to_string()))),
                     ast::ArithOp::Add,
                     Box::new(ast::ArithExpr::Num(OrderedFloat::from(5.0))),
@@ -799,7 +846,7 @@ mod tests {
             ),
             (
                 "parent(john, X)",
-                ast::RHS::Compound(ast::Compound {
+                ast::Rhs::Compound(ast::Compound {
                     functor: "parent".to_string(),
                     params: vec![
                         ast::Term::Atom(ast::Atom {
@@ -812,7 +859,7 @@ mod tests {
         ];
 
         for (input, expected) in cases {
-            let (_, result) = ast::RHS::parse(input).unwrap();
+            let (_, result) = ast::Rhs::parse(input).unwrap();
             assert_eq!(result, expected);
         }
     }
