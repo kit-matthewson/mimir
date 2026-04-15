@@ -73,6 +73,7 @@ fn main() -> Result<(), mimir::MimirError> {
                     .map(|(variable, value)| format!("{} = {}", variable, value))
                     .collect::<Vec<_>>()
                     .join(", ");
+
                 print!("{}", rendered_bindings);
             }
 
