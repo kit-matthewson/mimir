@@ -203,12 +203,6 @@
       bottom: 1pt,
     ),
 
-    fill: (_, row) => if calc.even(row) and row > 0 {
-      luma(98%)
-    } else {
-      none
-    },
-
     inset: (y: 4pt),
   )
 
