@@ -1,10 +1,6 @@
 //! Parser for Mini-Prolog.
 //!
 //! Contains the AST definitions and parsing functions.
-//!
-//! # TODO:
-//! - Quoted atoms
-//! - Strings?
 
 pub mod ast;
 
