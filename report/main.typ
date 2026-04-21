@@ -2,6 +2,7 @@
 
 #import "@preview/timeliney:0.4.0"
 #import "@preview/cetz:0.4.2"
+#import "@preview/lilaq:0.6.0" as lq
 
 #set text(lang: "en")
 
@@ -29,7 +30,7 @@ As a _declarative_ language, the Prolog programmer describes _what_ should be ac
 
 A Prolog program consists of a database of _clauses_. Clauses with no body are referred to as _facts_, whilst those that have a body are referred to as _rules_. Facts are unconditional statements about the world, while rules define relationships between facts using logical implications. For example, consider:
 
-```pl
+```
 edge(a, b).
 edge(b, c).
 edge(c, d).
@@ -48,49 +49,6 @@ The program can then be queried. A query of `path(a, d)` returns true, whilst `p
 Prolog uses a process called _unification_ to answer queries. Unification is an algorithm that attempts to make two terms identical by finding a substitution for their variables @clocksin_programming_2003. For instance, in the above example the variable `X` in the query `path(a, X)` can be unified with `b`, `c`, and `d`.
 
 The language chosen for the implementation is Rust, a modern systems programming language first released in 2010. The main focus of Rust is on memory safety whilst maintaining high performance, making it a popular choice for tasks traditionally handled by C or C++ @bugden_rust_2022. As a major example, Rust has been adopted as one of the languages accepted into the Linux kernel @nichols_rust_2024.
-
-== Mini-Prolog
-For this project, a subset of Prolog will be used that we will call _Mini-Prolog_. This is based on the design given by Dewey and Hardekopf @dewey_mini. Mini-Prolog simplifies the implementation of a Prolog engine in two ways: by removing features from Prolog, and introducing an internal syntax.
-
-The removed features are cut, clause management predicates, meta-programming operators, and built-in predicates.
-
-The _cut_ operator allows the programmer to control backtracking by instructing the Prolog engine not to attempt any further alternatives. This removes _negation as failure_ by extension, as it is implemented using cut. There are only a few cases where cut is necessary for the execution of a program, it is most often used to improve the efficiency of a program.
-
-Clause management predicates allow the programmer to modify the program at runtime by adding or retracting clauses. This is a powerful feature used in some programs but is not necessary for the execution of most Prolog programs. Note also that if the implementation is being used as a library in a Rust program, the user could implement this functionality externally.
-
-Full Prolog implementations often include built-in _meta-programming_ operators, which allow the programmer to reason about the program itself. For example, `bagof/3` allows the programmer to generate a list of all solutions to a query. As with clause management predicates, this feature could be implemented externally by users of the engine as a library.
-
-As well as these features, the implementation will not include a standard library of commonly used predicates.
-
-Dewey and Hardekopf introduce an internal syntax that can be produced from the user-facing syntax by a translation step implemented in the engine. This internal syntax removes syntactic sugar from the user-facing syntax, such as lists and pattern-matching, and translates them into structures that can be handled with simple unification.
-
-The internal syntax replaces lists with `cons/2` structures. For example, the user-facing syntax `[1, 2, 3]` becomes `cons(1, cons(2, cons(3, nil)))`. This means that the engine does not need to implement any special handling for lists, as they are just a specific case of compound terms.
-
-Pattern matching can always be replaced with some number of unification operations. Matching for an empty list, for example, can be replaced by unification with `nil`.
-
-The head of a clause is changed so that it only contains variables. This can be achieved by inserting a number of unification steps at the beginning of the body of the clause to unify new variables in the head with the original terms in the head. In addition to this, a list of local variables is added alongside the head of the clause, which contains all the variables used in the clause. This has no effect on the execution of the program (as all Prolog variables are clause-local anyway), but simplifies the implementation of the engine by making it clear which variables are in scope at any given point.
-
-Unification between arbitrary values can be replaced with variable bindings and unification on these variables. A variable _binding_ ($arrow.l$) differs from unification ($equiv$) in that it creates an equivalence between the variable and the value, but does not attempt to unify them. By using this translation, the engine only needs to implement unification between variables.
-
-The user-facing syntax:
-```pl
-allLess(_, []).
-allLess(V1, [V2 | Rest]) :-
-    V2 < V1,
-    allLess(V1, Rest).
-```
-Would be translated to:
-```pl
-allLess(T1, T2) {T3} :-
-  T3 ← nil(),
-  T2 ≡ T3.
-
-allLess(V1, T1) {V2, Rest, T2} :-
-  T2 ← cons(V2, Rest),
-  T1 ≡ T2,
-  V2 < V1,
-  allLess(V1, Rest).
-```
 
 == Rust
 Anyone who has written C or C++ will be familiar with issues such as buffer overflows, memory leaks, and use-after-free errors. Rust uses an ownership model, where there is always exactly one owner of memory at any given time, to prevent these issues. When sharing data, the user can choose to transfer ownership (moving), create an immutable reference (borrowing), or clone the data. The memory is automatically freed when its owner goes out of scope, preventing the need to manually manage memory @bugden_rust_2022. It should be noted that these restrictions can be escaped using `unsafe` blocks, allowing the user to manually manage memory if absolutely necessary, whilst making these regions of code explicit and easily identifiable @rust-lang.
@@ -189,7 +147,7 @@ There are multiple target use cases for this project. The first is as a learning
 Fuzzy logic support is a stretch goal for this project. If implemented, it would allow the engine to evaluate predicates with a degree of truth rather than boolean true or false. This would expand the capabilities of the engine to include the uncertainty and imprecision common in real-world applications.
 
 == User Requirements <sec:user_requirements>
-I have identified two main personas for this project. The first is someone interested in logic programming and Prolog, who wants to understand how a Prolog engine works. This user would be interested in the implementation details of the engine, and would therefore expect it to be well-documented and easy to read. The second persona is someone who wants to execute Prolog queries, either by writing Prolog programs and executing them with the engine, or by using the engine as a library in other Rust programs.
+I have identified two personas for this project. The first is someone interested in logic programming and Prolog, who wants to understand how a Prolog engine works. This user would be interested in the implementation details of the engine, and would therefore expect it to be well-documented and easy to read. The second persona is someone who wants to execute Prolog queries, either by writing Prolog programs and executing them with the engine, or by using the engine as a library in other Rust programs.
 
 The design should be implemented in modern Rust, using idiomatic Rust features and best practices to ensure the code is clear and maintainable. Any unsafe code should be clearly marked and justified, as this would be important for the first persona who is interested in understanding the implementation details of the engine.
 
@@ -197,24 +155,48 @@ Clear documentation, including both explanatory comments in the code and documen
 
 The structure of the code should be easy to understand, with clear separation between the parser, translator, and engine. This would benefit both personas, as the first would be interested in understanding the implementation details of each component, while the second may wish to verify or extend the functionality of specific components.
 
-As well as the above general requirements, the implementation will be verified with a use case that is designed to test the key features of the engine, such as unification and backtracking.
-
-== Success Criteria <sec:success_criteria>
-This project's success criteria are based on the user's requirements identified in @sec:user_requirements.
-
-To be successful, the parser must be able to read valid Mini-Prolog syntax and use it to generate an abstract syntax tree representing the user-facing syntax. It must also provide meaningful error messages when it encounters invalid syntax.
-
-The translator must correctly translate the user-facing syntax tree into an internal syntax tree representing Dewey and Hardekopf's internal syntax. This includes correctly handling the translation of lists, pattern matching, and unification.
-
-The execution engine must correctly implement the execution model defined by Dewey and Hardekopf, including the handling of the goal stack, environment, and choice stack. The unification algorithm must be implemented correctly according to their design.
-
-These three components will be individually tested with a comprehensive suite of test cases. The entire system will also be tested with a predefined set of Prolog programs and queries, which should produce the expected results. The engine should be usable for executing Prolog queries both by loading Prolog programs and by using the engine as a library in other Rust programs.
-
-The identified validation use case should be implemented using the engine, and it should produce the expected results. This will verify that the implementation meets the user requirements and success criteria.
-
-As well as functional requirements, the code should be well-documented, with clear explanations of the implementation and usage. The code should be clear and maintainable, following Rust best practices and idiomatic usage. Any unsafe code should be clearly marked and justified. The performance of the engine should be reasonable for a simple Prolog implementation, although it is not expected to be competitive with highly optimized Prolog engines.
-
 = Design \& Implementation
+== Mini-Prolog
+For this project, the implementation will target a subset of Prolog referred to as _Mini-Prolog_. This is based on the specification given by Dewey and Hardekopf @dewey_mini. Mini-Prolog simplifies the implementation of a Prolog engine by removing some features from Prolog, and so allowing the use of an internal syntax.
+
+The removed features are cut, clause management predicates, meta-programming operators, and built-in predicates.
+
+The _cut_ operator allows the programmer to control backtracking by instructing the Prolog engine not to attempt any further alternatives. This removes _negation as failure_ by extension, as it is implemented using cut. There are only a few cases where cut is necessary for the execution of a program, it is most often used to improve the efficiency of a program.
+
+Clause management predicates allow the programmer to modify the program at runtime by adding or retracting clauses. This is a powerful feature used in some programs but is not necessary for the execution of most Prolog programs. Note also that if the implementation is being used as a library in a Rust program, the user could implement this functionality externally.
+
+Full Prolog implementations often include built-in _meta-programming_ operators, which allow the programmer to reason about the program itself. For example, `bagof/3` allows the programmer to generate a list of all solutions to a query. As with clause management predicates, this feature could be implemented externally by users of the engine as a library.
+
+Dewey and Hardekopf introduce an internal syntax that can be produced from the user-facing syntax by a translation step. This internal syntax removes syntactic sugar from the user-facing syntax, such as lists and pattern-matching, and translates them into structures that can be handled with simple unification.
+
+The internal syntax replaces lists with `cons/2` structures. For example, the user-facing syntax `[1, 2, 3]` becomes `cons(1, cons(2, cons(3, nil)))`. This means that the engine does not need to implement any special handling for lists, as they are just a specific case of compound terms.
+
+Pattern matching can always be replaced with some number of unification operations. Matching for an empty list, for example, can be replaced by unification with `nil`.
+
+The head of a clause is changed so that it only contains variables. This can be achieved by inserting a number of unification steps at the beginning of the body of the clause to unify new variables in the head with the original terms in the head. In addition to this, a list of local variables is added alongside the head of the clause, which contains all the variables used in the clause. This has no effect on the execution of the program (as all Prolog variables are clause-local anyway), but simplifies the implementation of the engine by making it clear which variables are in scope at any given point.
+
+Unification between arbitrary values can be replaced with variable bindings and unification on these variables. A variable _binding_ ($arrow.l$) differs from unification ($equiv$) in that it creates an equivalence between the variable and the value, but does not attempt to unify them. By using this translation, the engine only needs to implement unification between variables.
+
+The user-facing syntax:
+```
+allLess(_, []).
+allLess(V1, [V2 | Rest]) :-
+    V2 < V1,
+    allLess(V1, Rest).
+```
+Would be translated to:
+```
+allLess(T1, T2) {T3} :-
+  T3 ← nil(),
+  T2 ≡ T3.
+
+allLess(V1, T1) {V2, Rest, T2} :-
+  T2 ← cons(V2, Rest),
+  T1 ≡ T2,
+  V2 < V1,
+  allLess(V1, Rest).
+```
+
 == High-Level Architecture
 The design consists of three parts: a parser to generate an abstract syntax tree (AST) from user-facing syntax, a translator to convert the user-facing syntax to the internal syntax, and an engine to execute the program using the syntax tree of the internal syntax. Each of these parts will be implemented as separate Rust modules, with clear interfaces between them.
 
@@ -226,7 +208,7 @@ The engine will be structured as defined by Dewey and Hardekopf @dewey_mini, whi
 
 These three components are separated into Rust modules, with clear interfaces between them. This allows for a clear separation of concerns, making the code easier to understand and maintain.
 
-This design is chosen to meet the user requirements identified in @sec:success_criteria. The use of Rust ensures the implementation is in a modern language with good performance and safety guarantees. The use of _nom_ allows for a clear and maintainable parser, while the use of a translator to an internal syntax provides clear separation of concerns and simplifies the engine implementation.
+This design is chosen to meet the identified user requirements and success criteria. The use of Rust ensures the implementation is in a modern language with good performance and safety guarantees. The use of _nom_ allows for a clear and maintainable parser, while the use of a translator to an internal syntax provides clear separation of concerns and simplifies the engine implementation.
 
 The engine structure defined by Dewey and Hardekopf is chosen for its simplicity, which is appropriate for this project given the focus on understanding and correctness over performance.
 
@@ -273,16 +255,16 @@ The primary function of the translator module is to take a syntax tree represent
 The translator starts with the head of the clause, which starts as a compound with arbitrary terms as arguments. This needs to be converted into a compound with only variables as arguments, which can be achieved by replacing any non-variable terms with a new variable and adding unification goals to the body of the clause.
 
 Each goal of the body can then be translated individually. Each user-facing goal may map to a number of internal goals, for example internal relational operators can only compare variables, so any non-variable terms are replaced with new variables and unification goals. The user-facing goal:
-```pl
+```
 X + 1 > 3
 ```
 Would be translated into multiple internal goals:
-```pl
+```
 T1 ← X + 1,
 T2 ← 3,
 T1 > T2
 ```
-An internal clause technically only has one goal, which is produced by folding multiple goals into conjunctions. Using this method, the above goals would be folded into: ```pl ((T1 ← X + 1, T2 ← 3), T1 > T2)```.
+An internal clause technically only has one goal, which is produced by folding multiple goals into conjunctions. Using this method, the above goals would be folded into: `((T1 ← X + 1, T2 ← 3), T1 > T2)`.
 
 Wildcard variables (represented by variables starting with an underscore in the user-facing syntax) are replaced with new, arbitrary, variables. Because these variables are ensured to be unique, they will unify with any term and so can be used in place of wildcards without requiring any special handling by the engine.
 
@@ -345,7 +327,7 @@ My method for adding fuzzy logic support to Prolog consists of allowing predicat
 The syntax I chose for this was for fuzzy clauses to use `:~` instead of `:-` to separate the head of the clause from its body. The final line of these clauses is then interpreted as a 'truth value expression'. Standard `:-` crisp predicates can be treated as fuzzy clauses that imply a truth value of 1.0, allowing compatibility between fuzzy and crisp predicates.
 
 Using my implementation, a simple fuzzy predicate for 'warm' could be defined as follows:
-```pl
+```
 trapezoidal(X, A, _, _, _, 0) :-
   X < A,
 trapezoidal(X, A, B, _, _, F) :-
@@ -370,6 +352,8 @@ This program starts by defining a predicate `trapezoidal/6` which defines a trap
 
 Note a limitation of the implementation: structures cannot be used as truth value expressions. This is why the `warm/1` predicate must get the truth value from the `trapezoidal/6` predicate through the variable `F`, rather than calling `trapezoidal/6` directly as the truth value expression. This does not reduce the types of program that can be created, as all clauses could be written to return their truth value through a variable so that they can be used in this way.
 
+Clauses that are defined using the standard `:-` syntax have a truth value expression of `1.0` automatically added to them, so that they can be handled in the same way as fuzzy clauses.
+
 These syntactic modifications required adding support for floats. Rust's primitive float types, `f32` and `f64`, do not implement the `Ord`, `Eq`, or `Hash` traits. This means that they cannot be compared for order or equality, or used as keys in a hash map. Because these operations are necessary: comparisons are needed to evaluate goals, and the equivalence classes are stored as a hash map, I chose to use the `ordered_float` crate, which provides a wrapper type around floats that implements these traits @ordered_float_github.
 
 The conjunction of fuzzy predicates is evaluated using the Zadeh operators, with minimum for conjunction, maximum for disjunction, and $1 - p$ for negation @zadeh_fuzzy_1965. As goals are evaluated, a running truth value is maintained and updated using these operators.
@@ -382,8 +366,24 @@ When the execution needs to branch, due to a disjunction or predicate, the `hand
 
 States are only discarded if their truth value is below the threshold. This allows for the engine to return all possible solutions along with their truth values, rather than just the single solution with the highest truth value.
 
-== Success Criteria for Design \& Implementation
-The design and implementation will be considered successful if it meets the user requirements and success criteria identified in @sec:user_requirements and @sec:success_criteria. This includes correctly implementing the parser, translator, and engine according to the specifications given, as well as providing clear documentation and maintainable code.
+== Success Criteria
+Each of the parser, translator, and engine components have key criteria that must be met for the implementation to be considered successful.
+
+The parser must be able to read valid Mini-Prolog syntax and use it to generate an abstract syntax tree representing the user-facing syntax. It must also provide meaningful error messages when it encounters invalid syntax.
+
+Clauses and goals must be parsed correctly, including handling of lists, pattern matching, and unification. The parser must also be able to parse the new syntax for fuzzy predicates if this feature is implemented.
+
+The translator must correctly translate the user-facing syntax tree into an internal syntax tree representing Dewey and Hardekopf's internal syntax. This includes correctly handling the translation of lists, pattern matching, and unification.
+
+To verify the functionality of the translator, a number of test cases will be created with user-facing syntax and their expected internal syntax. The translator will be tested against these cases to ensure it produces the correct internal syntax.
+
+The execution engine must correctly implement the execution model defined by Dewey and Hardekopf, including the handling of the goal stack, environment, and choice stack. The unification algorithm must be implemented correctly according to their design.
+
+Verification of the engine can be achieved with tests for each of the different goals that the engine can handle, such as conjunctions, checks, and relational operators. These tests will involve checking the engine's internal state before and after handling a goal, to ensure that it behaves as expected. For example, when handling a conjunction, the engine should push each conjunct onto the goal stack.
+
+The most concrete success criterion is that the implementation produces the expected results for a predefined set of Prolog programs and queries. These will be complete programs that test all the key features of the engine. These can be constructed so that they have well-defined correct results for a variety of queries.
+
+As well as functional requirements, the code should be well-documented, with clear explanations of the implementation and usage. The code should be clear and maintainable, following Rust best practices and idiomatic usage. Any unsafe code should be clearly marked and justified. The performance of the engine should be reasonable for a simple Prolog implementation, although it is not expected to be competitive with highly optimised Prolog engines.
 
 = Methods
 == Development Environment
@@ -410,86 +410,246 @@ My implementation allows users to execute Prolog queries both by loading Prolog 
 
 Fuzzy Prolog predicates use new syntax that I have defined, namely the use of `:~` to separate the head of a clause from its body, and the inclusion of a 'truth value expression' as the final line of the clause. This allows for predicates to be evaluated with a degree of truth, rather than just true or false, and for the use of fuzzy quantifiers.
 
-== Evaluation
-
-== Testing \& Verification
-
 == Verification
-The standard implementation can be verified with simple Prolog programs that test the key features of the engine, such as unification and backtracking. The following programs have been identified for this purpose:
+=== Standard Prolog Verification
+The implementation of standard, crisp, Prolog can be verified with simple programs that test the key features of the engine. I identified two programs that together test all the key features of the engine: a graph traversal program and a list operations program.
 
-A program to to test for connectedness in a graph, which tests the engine's ability to handle recursion and backtracking:
-```pl
+The graph operations program defines the following predicates:
+```
 edge(a, b).
 edge(b, c).
 edge(c, d).
-edge(n, p).
+edge(a, e).
 
-connected(X, Y) :-
-  edge(X, Y).
-connected(X, Y) :-
-  edge(X, Z),
-  connected(Z, Y).
-```
-When executed with my implementation, the following queries produce the given results:
-```pl
-?- connected(a, b).
-true.
-?- connected(a, c).
-true.
-?- connected(a, p).
-false.
-?- connected(a, X).
-X = b ; X = c ; X = d.
-```
+path(X, Y) :- edge(X, Y).
+path(X, Y) :- edge(X, Z), path(Z, Y).
+``` <lst:graph_program>
+This program tests the engine's ability to handle recursion. Example queries and their expected results with this program are given in @tab:graph_verification_results.
 
-A program to reverse a list, which tests the engine's ability to handle lists and unification:
-```pl
+#figure(
+  caption: [Queries and results for the graph traversal program.],
+  table(
+    columns: 2,
+    align: (left,),
+
+    table.header[Query][Expected Result],
+    [`path(a, b)`], [`true`],
+    [`path(a, e)`], [`true`],
+    [`path(b, e)`], [`false`],
+    [`path(a, Y)`], [`Y = b; Y = e; Y = c; Y = d`],
+  ),
+) <tab:graph_verification_results>
+
+The list operations program defines `first/2` and `last/2` to get the first and last elements of a list, `append/3` to append two lists together, `member/2` to check if an element is in a list, and `reverse/2` to reverse a list. The implementation of these predicates is given below:
+```
+first([H|_], H).
+
+last([X], X).
+last([_|T], X) :- last(T, X).
+
+append([], Ys, Ys).
+append([X|Xs], Ys, [X|Zs]) :- append(Xs, Ys, Zs).
+
+member(X, [X|_]).
+member(X, [_|T]) :- member(X, T).
+
 reverse([], []).
-reverse([H|T], R) :-
-  reverse(T, RT),
-  append(RT, [H], R).
-```
-When executed with my implementation, the following queries produce the given results:
-```pl
-?- reverse([1, 2, 3], R).
-R = [3, 2, 1].
-?- reverse(X, [1, 2, 3]).
-X = [3, 2, 1].
-```
+reverse([H|T], R) :- reverse(T, RT), append(RT, [H], R).
+``` <lst:list_program>
+Each of these predicates requires handling lists, including the `[H|T]` syntax for pattern matching against the head and tail of a list. Example queries for these predicates are given in @tab:list_verification_results. Notice how some of the predicates can be used in multiple ways, for example `append/3` can be used to append two lists together and also to remove a prefix or suffix.
 
-A program to implement quicksort, which tests the engine's ability to handle more complex programs and multiple clauses defining the same predicate:
-```pl
-append([], L, L).
-append([H|T], L, [H|R]) :-
-  append(T, L, R).
+#figure(
+  caption: [Queries and results for the list operations program.],
+  table(
+    columns: 2,
+    align: (left,),
 
-quicksort([], []).
-quicksort([H|T], R) :-
-  partition(H, T, L, G),
-  quicksort(L, RL),
-  quicksort(G, RG),
-  append(RL, [H|RG], R).
+    table.header[Query][Expected Result],
+    [`first([1, 2, 3])`], [`1`],
+    [`last([1, 2, 3])`], [`3`],
+    [`all_less(0, [1, 2, 3])`], [`true`],
+    [`all_less(2, [1, 2, 3])`], [`false`],
+    [`append([1, 2], [3, 4], X)`], [`X = [1, 2, 3, 4]`],
+    [`append(X, [3, 4], [1, 2, 3, 4])`], [`X = [1, 2]`],
+    [`member(2, [1, 2, 3])`], [`true`],
+    [`member(4, [1, 2, 3])`], [`false`],
+    [`member(X, [1, 2, 3])`], [`X = 1; X = 2; X = 3`],
+    [`reverse([1, 2, 3], X)`], [`X = [3, 2, 1]`],
+  ),
+) <tab:list_verification_results>
 
-partition(_, [], [], []).
-partition(Pivot, [H|T], [H|L], G) :-
-  H =< Pivot,
-  partition(Pivot, T, L, G).
-partition(Pivot, [H|T], L, [H|G]) :-
-  H > Pivot,
-  partition(Pivot, T, L, G).
+The results of queries to these programs are well-defined and can be easily verified, making them ideal for testing the correctness of the engine. The implementation does produce the expected results for the set of queries, which verifies that the engine is correctly implementing the execution model of standard Prolog.
+
+=== Fuzzy Prolog Verification
+In order to verify the implementation of fuzzy Prolog I used two programs: one that defines a trapezoidal membership function, and one that defines a graph similar to the one used in the graph traversal program, but with fuzzy edges.
+
+The trapezoidal membership function program defines a predicate `trapezoidal/5` that has parameters for an input value $X$ and four parameters of the trapezoidal function. It uses these to create a fuzzy truth expression for the final line of the clause, as dictated by my syntax. The trapezoidal function can be notated as follows:
+#set math.cases(gap: 0.4em)
+$
+  f(x) = cases(
+    0 wide & x < a,
+    (x - a) / (b - a) wide & a <= x <= b,
+    1 wide & b < x < c,
+    (d - x) / (d - c) wide & c <= x <= d,
+    0 wide & x > d,
+  )
+$
+Where $a, b, c, d in ZZ$ are the parameters of the function, defining the shape of the trapezoid. This is defined using my fuzzy Prolog syntax as follows:
 ```
-When executed with my implementation, the following queries produce the given results:
-```pl
-?- quicksort([3, 1, 2], R).
-R = [1, 2, 3].
-?- quicksort(X, [1, 2, 3]).
-X = [3, 1, 2] ; X = [2, 3, 1] ; X = [2, 1, 3] ; X = [1, 3, 2] ; X = [1, 2, 3].
+trapezoidal(X, A, _, _, _) :~
+  X < A,
+  0.
+trapezoidal(X, A, B, _, _) :~
+  X >= A,
+  X <= B,
+  (X - A) / (B - A).
+trapezoidal(X, _, B, C, _) :~
+  X > B,
+  X < C,
+  1.
+trapezoidal(X, _, _, C, D) :~
+  X >= C,
+  X <= D,
+  (D - X) / (D - C).
+trapezoidal(X, _, _, _, D) :~
+  X > D,
+  0.
 ```
+The implementation was verified using this program by querying it for values of $X$ within each of the different regions of the function, and verifying that the resulting truth value was as expected. For example, querying `trapezoidal(0, 1, 2, 3, 4)` should return a truth value of 0, whilst querying `trapezoidal(1.8, 1, 2, 3, 4)` should return a truth value of 0.8.
 
 == Performance
-Although performance is not a primary focus of this project, it must still be reasonable. To verify this, the implementation will be benchmarked against other Prolog implementations. These benchmarks will include both synthetic benchmarks, such as reversing lists and quicksort, and larger, more complex Prolog programs.
+Although performance is not a primary focus of this project, it must still be reasonable.
 
-If there is time, the implementation of some optimisations could be explored, and these benchmarks used to verify their effectiveness.
+Two programs were used to measure the performance of the engine: a program to calculate the Fibonacci sequence, and a program that reverses a list of a given length. These programs were chosen because they are simple to understand whilst having exponential time complexity with the given implementations. The implementations of these programs are given in @appendix:performance_programs.
+
+I tested the performance of these programs by running a series of queries with increasing input sizes. For the Fibonacci program I ran queries for `fib(n, F)` and for the list reversal program I ran queries for `reverse(L, R)` where `L` is a list of length `n`. I increased `n` until the execution time surpassed 10 seconds. To compare the performance of my implementation, I ran queries using a similar range of input sizes on SWI-Prolog @swi_github, which is a highly optimised Prolog engine.
+
+To measure the execution time of queries in my implementation, I used Rust's `std::time::Instant` to record the start and end times of query execution. For SWI-Prolog, I used the builtin `statistics/2` predicate which provides the execution time of queries. The differences in these methods is not significant compared to the execution times being measured, which are on the order of seconds.
+
+These measurements are intended to provide a comparison between the engines, and to verify that the performance of my implementation is adequate for simple queries. Therefore, producing exact results is not necessary, and the measurements are sufficient to show the general trend of the execution time as the input size increases.
+
+The results of the performance evaluation are shown in @fig:performance. Both programs show an exponential increase in execution time as the input size increases, which is expected given the nature of the programs. The execution time of my implementation for the Fibonacci program surpasses one second at $n=15$, and the list reversal program surpasses one second at $n=100$.
+
+#figure(
+  caption: [Performance of the engine on the Fibonacci and list reversal programs.],
+  placement: auto,
+)[
+  #let exeter-light = rgb("#00c896")
+  #let exeter-dark = rgb("#003b3b")
+
+  #grid(
+    columns: (45%, 45%),
+    // align: (left, right),
+    column-gutter: 30pt,
+    [
+      #let mimir = (
+        (0, 0),
+        (1, 0),
+        (2, 0),
+        (3, 0),
+        (4, 0),
+        (5, 0),
+        (6, 0),
+        (7, 0),
+        (8, 0),
+        (9, 11),
+        (10, 23),
+        (11, 54),
+        (12, 120),
+        (13, 295),
+        (14, 761),
+        (15, 1977),
+        (16, 8059),
+        // (17, 33761),
+      )
+
+      #let swi = (
+        (0, 0),
+        (5, 0),
+        (10, 0),
+        (15, 1),
+        (20, 10),
+        (25, 160),
+        (26, 252),
+        (27, 469),
+        // (28, 24893),
+      )
+
+      #let mimir_xs = mimir.map(x => x.at(0))
+      #let mimir_ys = mimir.map(x => x.at(1) / 1000)
+
+      #let swi_xs = swi.map(x => x.at(0))
+      #let swi_ys = swi.map(x => x.at(1) / 1000)
+
+      #lq.diagram(
+        title: [Time to calculate $"fib"(n)$],
+        xlabel: $n$,
+        ylabel: [Time / s],
+
+        lq.plot(mimir_xs, mimir_ys, mark: "s", color: exeter-dark, label: [Mine]),
+        lq.plot(swi_xs, swi_ys, mark: "d", color: exeter-light, label: [SWI-Prolog]),
+      )
+    ],
+
+    [
+      #let data = (
+        (0, 0),
+        (10, 4),
+        (20, 17),
+        (30, 49),
+        (40, 100),
+        (50, 181),
+        (60, 290),
+        (70, 468),
+        (80, 648),
+        (90, 920),
+        (100, 1258),
+        (110, 1683),
+        (120, 2185),
+        (130, 2876),
+        (140, 4068),
+        (150, 5618),
+        (160, 7494),
+        (170, 9566),
+        // (180, 11483),
+      )
+
+      #let xs = data.map(x => x.at(0))
+      #let ys = data.map(x => x.at(1) / 1000)
+
+      #lq.diagram(
+        title: [Time to reverse a list of length $n$],
+        xlabel: $n$,
+        ylabel: [Time / s],
+
+        lq.plot(xs, ys, mark: "s", color: exeter-dark, label: [Mine]),
+        // SWI-Prolog is 0ms for all list reversal queries
+        lq.plot(
+          range(0, 250, step: 50),
+          range(0, 250, step: 50).map(_ => 0),
+          mark: "d",
+          color: exeter-light,
+          label: [SWI-Prolog],
+        ),
+      )
+    ],
+  )
+] <fig:performance>
+
+My implementation is significantly slower than SWI-Prolog, which was expected. The simplicity of my design misses out on many of the optimisations that are used in highly optimised Prolog engines such as SWI-Prolog, which uses the Warren Abstract Machine (WAM) @ait-kaci_warrens_1991, and further optimisations such as clause indexing and tail call optimisation.
+
+For simple queries, such as those used in the verification programs, the execution time is typically under a second, which meets the success criteria defined above.
+
+== Evaluation
+The implementation meets the success criteria defined in the previous section. The criteria for the parser, translator, and engine are provably met through the comprehensive suite of tests that have been created for each component. The complete implementation has also been verified against a set of Prolog programs with well-defined results, and produces the expected results for all of the queries tested.
+
+For the fuzzy logic features, an intuitive syntax was designed and implemented that ties closely to existing Prolog syntax. The fuzzy execution model is simple to understand and, to the best of my knowledge, unique.
+
+*TODO: Evaluation of fuzzy logic features.*
+
+Performance is clearly a weakness of the implementation, which was anticipated given the focus on simplicity. Improvements to the performance of the engine are discussed in the future work section below.
+
+A key tradeoff in the design is between simplicity and functionality. The design of the engine is focused on simplicity, but this comes at the cost of performance and support for some Prolog features. Implementing a complete Prolog engine such as the Warren Abstract Machine (WAM) would significantly improve performance and support all Prolog features, but would be a much more complex implementation. This would increase the time required to complete the project and would make it more difficult to understand the final product.
 
 = Reflection
 == Future Work
@@ -500,6 +660,15 @@ Implementing the Warren Abstract Machine (WAM) would be an interesting extension
 It would also be interesting to modify an existing Prolog implementation, such as Scryer Prolog @scryer_github, to add support for fuzzy logic using the syntax and semantics I have defined in this project. This would allow for fuzzy logic to be used in a more mature and feature-rich Prolog implementation, and would be a good way to verify the generality of my approach to integrating fuzzy logic into Prolog.
 
 = Conclusion
+In this project I have successfully implemented a Prolog engine in Rust, following the design of Dewey and Hardekopf's Mini-Prolog implementation, and then extended it to support fuzzy logic using a novel syntax and execution model.
+
+My project allows users to execute Prolog queries with both crisp and fuzzy predicates, all whilst using an engine with a core algorithm that is simple to understand implemented in a modern language.
+
+I met all of the success criteria and objectives that I set out at the beginning of the project, and this is verified through a comprehensive suite of tests and the successful execution of a set of Prolog programs.
+
+This work significantly increased my knowledge of Prolog and introduced me to Fuzzy Logic, which I had not previously studied. It also gave me experience using Rust in a large project. In wider contexts, this project has applications in teaching Prolog as the simplicity of the engine allows for a clear demonstration of how Prolog works, and in applications that require fuzzy logic such as expert systems and decision making under uncertainty.
+
+The extension of Prolog to support fuzzy logic is an area that could be explored further, especially through the modification of the Warren Abstract Machine or an existing Prolog implementation. This would allow for the performance benefits of these implementations to be combined with the added functionality of fuzzy logic.
 
 #pagebreak(weak: true)
 
@@ -522,6 +691,30 @@ It would also be interesting to modify an existing Prolog implementation, such a
 
 #heading(numbering: none)[Appendices]
 
+
+== Performance Programs <appendix:performance_programs>
+The Fibonacci program is as follows:
+```
+fib(0, 0).
+fib(1, 1).
+fib(N, F) :-
+    N > 1,
+    N1 = N - 1,
+    N2 = N - 2,
+    fib(N1, F1),
+    fib(N2, F2),
+    F = F1 + F2.
+```
+
+The list reversal program is as follows:
+```
+reverse([], []).
+reverse([H|T], R) :-
+    reverse(T, RT),
+    append(RT, [H], R).
+```
+
+#pagebreak(weak: true)
 == Project Gantt Chart <appendix:gantt>
 A Gantt chart for this project is given in @fig:gantt.
 
