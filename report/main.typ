@@ -19,6 +19,8 @@
   table-of-contents: outline(),
 )
 
+#show figure.where(kind: raw): set box(stroke: 1pt)
+
 = Introduction
 The goal of this dissertation was the implementation of a Mini-Prolog interpreter in Rust, with the stretch goal of adding fuzzy logic support. This starts with an implementation based on an article by Dewey and Hardekopf @dewey_mini, which defines a simple Prolog engine with a focus on simplicity over performance. This implementation was then extended to support fuzzy logic, a new contribution that allows the engine to handle uncertainty and imprecision in a way that standard Prolog cannot.
 
@@ -414,20 +416,27 @@ Fuzzy Prolog predicates use new syntax that I have defined, namely the use of `:
 === Standard Prolog Verification
 The implementation of standard, crisp, Prolog can be verified with simple programs that test the key features of the engine. I identified two programs that together test all the key features of the engine: a graph traversal program and a list operations program.
 
-The graph operations program defines the following predicates:
-```
-edge(a, b).
-edge(b, c).
-edge(c, d).
-edge(a, e).
+The graph operations program is given in @lst:graph_program. This program tests the engine's ability to handle recursion.
 
-path(X, Y) :- edge(X, Y).
-path(X, Y) :- edge(X, Z), path(Z, Y).
-``` <lst:graph_program>
-This program tests the engine's ability to handle recursion. Example queries and their expected results with this program are given in @tab:graph_verification_results.
+#figure(
+  caption: [Graph traversal program.],
+)[
+  ```
+  edge(a, b).
+  edge(b, c).
+  edge(c, d).
+  edge(a, e).
+
+  path(X, Y) :- edge(X, Y).
+  path(X, Y) :- edge(X, Z), path(Z, Y).
+  ```
+] <lst:graph_program>
+
+Example queries and their expected results with this program are given in @tab:graph_verification_results.
 
 #figure(
   caption: [Queries and results for the graph traversal program.],
+  placement: auto,
   table(
     columns: 2,
     align: (left,),
@@ -440,26 +449,34 @@ This program tests the engine's ability to handle recursion. Example queries and
   ),
 ) <tab:graph_verification_results>
 
-The list operations program defines `first/2` and `last/2` to get the first and last elements of a list, `append/3` to append two lists together, `member/2` to check if an element is in a list, and `reverse/2` to reverse a list. The implementation of these predicates is given below:
-```
-first([H|_], H).
+The list operations program defines `first/2` and `last/2` to get the first and last elements of a list, `append/3` to append two lists together, `member/2` to check if an element is in a list, and `reverse/2` to reverse a list. The implementation of these predicates is given in @lst:list_program.
 
-last([X], X).
-last([_|T], X) :- last(T, X).
+#figure(
+  caption: [List operations program.],
+)[
+  ```
+  first([H|_], H).
 
-append([], Ys, Ys).
-append([X|Xs], Ys, [X|Zs]) :- append(Xs, Ys, Zs).
+  last([X], X).
+  last([_|T], X) :- last(T, X).
 
-member(X, [X|_]).
-member(X, [_|T]) :- member(X, T).
+  append([], Ys, Ys).
+  append([X|Xs], Ys, [X|Zs]) :- append(Xs, Ys, Zs).
 
-reverse([], []).
-reverse([H|T], R) :- reverse(T, RT), append(RT, [H], R).
-``` <lst:list_program>
+  member(X, [X|_]).
+  member(X, [_|T]) :- member(X, T).
+
+  reverse([], []).
+  reverse([H|T], R) :- reverse(T, RT), append(RT, [H], R).
+  ```
+] <lst:list_program>
+
 Each of these predicates requires handling lists, including the `[H|T]` syntax for pattern matching against the head and tail of a list. Example queries for these predicates are given in @tab:list_verification_results. Notice how some of the predicates can be used in multiple ways, for example `append/3` can be used to append two lists together and also to remove a prefix or suffix.
 
 #figure(
   caption: [Queries and results for the list operations program.],
+  placement: auto,
+
   table(
     columns: 2,
     align: (left,),
@@ -483,7 +500,7 @@ The results of queries to these programs are well-defined and can be easily veri
 === Fuzzy Prolog Verification
 In order to verify the implementation of fuzzy Prolog I used two programs: one that defines a trapezoidal membership function, and one that defines a graph similar to the one used in the graph traversal program, but with fuzzy edges.
 
-The trapezoidal membership function program defines a predicate `trapezoidal/5` that has parameters for an input value $X$ and four parameters of the trapezoidal function. It uses these to create a fuzzy truth expression for the final line of the clause, as dictated by my syntax. The trapezoidal function can be notated as follows:
+The trapezoidal membership function program defines a predicate `trapezoidal/5` that has parameters for an input value $X$ and four parameters of the trapezoidal function. It uses these to create a fuzzy truth expression for the final line of the clause, as dictated by my syntax. The trapezoidal function can be notated as:
 #set math.cases(gap: 0.4em)
 $
   f(x) = cases(
@@ -494,7 +511,7 @@ $
     0 wide & x > d,
   )
 $
-Where $a, b, c, d in ZZ$ are the parameters of the function, defining the shape of the trapezoid. This is defined using my fuzzy Prolog syntax as follows:
+Where $a, b, c, d in ZZ$ are the parameters of the function, defining the shape of the trapezoid. This can be defined using my fuzzy Prolog syntax as follows:
 ```
 trapezoidal(X, A, _, _, _) :~
   X < A,
@@ -517,10 +534,36 @@ trapezoidal(X, _, _, _, D) :~
 ```
 The implementation was verified using this program by querying it for values of $X$ within each of the different regions of the function, and verifying that the resulting truth value was as expected. For example, querying `trapezoidal(0, 1, 2, 3, 4)` should return a truth value of 0, whilst querying `trapezoidal(1.8, 1, 2, 3, 4)` should return a truth value of 0.8.
 
+The crisp graph defined in @lst:graph_program can be modified by adding a truth value expression to some or all of the `edge/2` predicates, for example: `edge(a, b) :~ 0.8`. This allows for the verification that the Zadeh operators are being correctly applied. A path should have a truth value equal to the minimum of the truth values of all the edges in the path, as the conjunction of the goals in the path is evaluated using the minimum operator. For example, if `edge(a, b) :~ 0.8` and `edge(b, c) :~ 0.6`, then querying `path(a, c)` should return a truth value of 0.6.
+
+This was verified by modifying the graph program in the described way and querying for paths between different nodes, verifying that the resulting truth values were as expected.
+
 == Performance
 Although performance is not a primary focus of this project, it must still be reasonable.
 
-Two programs were used to measure the performance of the engine: a program to calculate the Fibonacci sequence, and a program that reverses a list of a given length. These programs were chosen because they are simple to understand whilst having exponential time complexity with the given implementations. The implementations of these programs are given in @appendix:performance_programs.
+Two programs were used to measure the performance of the engine: a program to calculate the Fibonacci sequence, and a program that reverses a list of a given length. These programs were chosen because they are simple to understand whilst having exponential time complexity with the given implementations. The implementations of these programs are given in @lst:performance_programs.
+
+#figure(
+  caption: [Fibonacci and list reversal programs used for performance evaluation.],
+  placement: auto,
+)[
+  ```
+  fib(0, 0).
+  fib(1, 1).
+  fib(N, F) :-
+      N > 1,
+      N1 = N - 1,
+      N2 = N - 2,
+      fib(N1, F1),
+      fib(N2, F2),
+      F = F1 + F2.
+
+  reverse([], []).
+  reverse([H|T], R) :-
+      reverse(T, RT),
+      append(RT, [H], R).
+  ```
+] <lst:performance_programs>
 
 I tested the performance of these programs by running a series of queries with increasing input sizes. For the Fibonacci program I ran queries for `fib(n, F)` and for the list reversal program I ran queries for `reverse(L, R)` where `L` is a list of length `n`. I increased `n` until the execution time surpassed 10 seconds. To compare the performance of my implementation, I ran queries using a similar range of input sizes on SWI-Prolog @swi_github, which is a highly optimised Prolog engine.
 
@@ -645,7 +688,7 @@ The implementation meets the success criteria defined in the previous section. T
 
 For the fuzzy logic features, an intuitive syntax was designed and implemented that ties closely to existing Prolog syntax. The fuzzy execution model is simple to understand and, to the best of my knowledge, unique.
 
-*TODO: Evaluation of fuzzy logic features.*
+The fuzzy extension was evaluated by checking the truth values returned by a trapezoidal membership function against expected values, which verified that the fuzzy logic features are working as intended. A noted limitation of the fuzzy implementation is that structures cannot be used in truth value expressions, which requires some types of program to be more verbose than they would be if this were supported. An example of such a program would be if one clause has a truth value defined as twice that of another clause.
 
 Performance is clearly a weakness of the implementation, which was anticipated given the focus on simplicity. Improvements to the performance of the engine are discussed in the future work section below.
 
@@ -690,29 +733,6 @@ The extension of Prolog to support fuzzy logic is an area that could be explored
 )
 
 #heading(numbering: none)[Appendices]
-
-
-== Performance Programs <appendix:performance_programs>
-The Fibonacci program is as follows:
-```
-fib(0, 0).
-fib(1, 1).
-fib(N, F) :-
-    N > 1,
-    N1 = N - 1,
-    N2 = N - 2,
-    fib(N1, F1),
-    fib(N2, F2),
-    F = F1 + F2.
-```
-
-The list reversal program is as follows:
-```
-reverse([], []).
-reverse([H|T], R) :-
-    reverse(T, RT),
-    append(RT, [H], R).
-```
 
 #pagebreak(weak: true)
 == Project Gantt Chart <appendix:gantt>
