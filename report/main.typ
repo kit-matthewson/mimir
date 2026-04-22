@@ -733,8 +733,6 @@ The extension of Prolog to support fuzzy logic is an area that could be explored
 )
 
 #heading(numbering: none)[Appendices]
-
-#pagebreak(weak: true)
 == Project Gantt Chart <appendix:gantt>
 A Gantt chart for this project is given in @fig:gantt.
 
