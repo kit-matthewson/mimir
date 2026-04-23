@@ -14,31 +14,23 @@ fn main() {
 
     let query = format!("quicksort({list:?}, X)");
     let solutions = program.crisp_query(&query).expect("query should execute");
-    let output_list = first_solution_as_list(&solutions, "X").expect("should have a solution");
+    let output_list: Vec<f64> = solutions
+        .first()
+        .expect("should have a solution")
+        .get("X")
+        .expect("solution should have variable X")
+        .try_into()
+        .expect("X should be a list");
     println!("Output: {output_list:?}");
 
     let query = format!("reverse({list:?}, Y)");
     let solutions = program.crisp_query(&query).expect("query should execute");
-    let output_list = first_solution_as_list(&solutions, "Y").expect("should have a solution");
+    let output_list: Vec<f64> = solutions
+        .first()
+        .expect("should have a solution")
+        .get("Y")
+        .expect("solution should have variable Y")
+        .try_into()
+        .expect("Y should be a list");
     println!("Reversed: {output_list:?}");
-}
-
-fn first_solution_as_list(solutions: &[mimir::Solution], variable: &str) -> Option<Vec<i64>> {
-    let solution = solutions.first()?;
-
-    let value = solution
-        .get(variable)
-        .expect("solution should have the requested variable")
-        .clone();
-
-    mimir::flatten_list(&value)
-        .expect("could not flatten list")
-        .iter()
-        .map(|v| {
-            v.get_number()
-                .expect("list items should be numbers")
-                .into_inner() as i64
-        })
-        .collect::<Vec<_>>()
-        .into()
 }

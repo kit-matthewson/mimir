@@ -31,12 +31,7 @@ fn main() {
         let query = format!("fib({n}, X)");
         let start = std::time::Instant::now();
         let solutions = program.crisp_query(&query).unwrap();
-        let fib_n = solutions[0]
-            .get("X")
-            .unwrap()
-            .get_number()
-            .unwrap()
-            .into_inner();
+        let fib_n: f64 = solutions[0].get("X").unwrap().try_into().unwrap();
         let duration = start.elapsed();
         println!("fib({n}) = {fib_n}, time: {duration:?}");
         fib_times.push((n, duration.as_millis()));

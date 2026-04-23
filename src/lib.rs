@@ -77,58 +77,167 @@ pub mod translator;
 
 pub use error::MimirError;
 
+/// A value in a solution, which can be a number, a compound term, an atom, or a list.
+#[derive(Debug, Clone)]
+pub enum Value {
+    /// A numeric value.
+    Num(f64),
+    /// A compound term, consisting of a functor and a list of argument values.
+    Term(String, Vec<Value>),
+    /// An atom, a term with no arguments.
+    Atom(String),
+    /// A list, from a term with functor '.' and two arguments (head and tail).
+    List(Vec<Value>),
+    /// A placeholder value
+    Placeholder,
+}
+
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Num(n) => write!(f, "{}", n),
+            Value::Atom(s) => write!(f, "{}", s),
+            Value::Term(functor, args) => {
+                if args.is_empty() {
+                    write!(f, "{}", functor)
+                } else {
+                    let args_str = args
+                        .iter()
+                        .map(|arg| format!("{}", arg))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    write!(f, "{}({})", functor, args_str)
+                }
+            }
+            Value::List(values) => {
+                let values_str = values
+                    .iter()
+                    .map(|value| format!("{}", value))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "[{}]", values_str)
+            }
+            Value::Placeholder => write!(f, "_"),
+        }
+    }
+}
+
+impl From<engine::Value> for Value {
+    fn from(value: engine::Value) -> Self {
+        match value {
+            engine::Value::Number(ordered_float) => Self::Num(ordered_float.into_inner()),
+            engine::Value::Ground(functor, values) => {
+                if values.is_empty() {
+                    Self::Atom(functor)
+                } else if functor == "." && values.len() == 2 {
+                    // Special case for lists, which are ./2
+                    let head = Value::from(values[0].clone());
+                    let tail = Value::from(values[1].clone());
+
+                    match tail {
+                        Value::List(mut tail_values) => {
+                            tail_values.insert(0, head);
+                            Self::List(tail_values)
+                        }
+                        Value::Atom(ref s) if s == "nil" => Self::List(vec![head]),
+                        other => Self::List(vec![head, other]),
+                    }
+                } else {
+                    Self::Term(
+                        functor,
+                        values.into_iter().map(Value::from).collect::<Vec<_>>(),
+                    )
+                }
+            }
+
+            engine::Value::Placeholder(_) => Self::Placeholder,
+        }
+    }
+}
+
+impl TryInto<f64> for Value {
+    type Error = MimirError;
+
+    fn try_into(self) -> Result<f64, Self::Error> {
+        match self {
+            Value::Num(n) => Ok(n),
+            _ => Err(MimirError::InvalidValueType("number".to_string())),
+        }
+    }
+}
+
+impl TryInto<Vec<f64>> for Value {
+    type Error = MimirError;
+
+    fn try_into(self) -> Result<Vec<f64>, Self::Error> {
+        match self {
+            Value::List(values) => values
+                .into_iter()
+                .map(|value| match value {
+                    Value::Num(n) => Ok(n),
+                    _ => Err(MimirError::InvalidValueType("number".to_string())),
+                })
+                .collect(),
+            _ => Err(MimirError::InvalidValueType("list".to_string())),
+        }
+    }
+}
+
 /// The response from executing a query, which may contain multiple solutions.
 #[derive(Debug, Clone)]
 pub struct Solution {
     /// The variable bindings for this solution, mapping variables to their values.
-    bindings: Vec<(engine::Variable, engine::Value)>,
+    bindings: Vec<(String, Value)>,
     /// The truth value of the solution, which is a number between 0 and 1.
     truth_value: f64,
 }
 
 impl Solution {
+    /// Create a user-facing solution from an engine solution.
+    pub fn from_engine_solution(
+        engine_solution: &engine::Solution,
+        vars: &Vec<engine::Variable>,
+    ) -> Self {
+        let mut engine_bindings = Vec::new();
+        for var in vars {
+            if let Some(value) = engine_solution.get(var) {
+                engine_bindings.push((var.clone(), value.clone()));
+            }
+        }
+
+        let bindings = engine_bindings
+            .into_iter()
+            .map(|(var, value)| (var.name().to_string(), Value::from(value)))
+            .collect::<Vec<_>>();
+
+        Solution {
+            bindings,
+            truth_value: engine_solution.truth_value(),
+        }
+    }
+
     /// Get the variable bindings for this solution.
-    pub fn bindings(&self) -> &Vec<(engine::Variable, engine::Value)> {
+    pub fn bindings_vec(&self) -> &Vec<(String, Value)> {
         &self.bindings
     }
 
-    /// Get the value of a specific variable in this solution, if it exists.
-    pub fn get(&self, var_name: &str) -> Option<&engine::Value> {
+    /// Get the variable bindings for this solution as a HashMap.
+    pub fn bindings(&self) -> std::collections::HashMap<String, Value> {
         self.bindings
             .iter()
-            .find(|(var, _)| engine::Variable::new(var_name) == *var)
-            .map(|(_, val)| val)
+            .cloned()
+            .collect::<std::collections::HashMap<_, _>>()
+    }
+
+    /// Get the value of a specific variable in this solution, if it exists.
+    pub fn get(&self, var_name: &str) -> Option<Value> {
+        self.bindings().get(var_name).cloned()
     }
 
     /// Get the truth value of this solution.
     pub fn truth_value(&self) -> f64 {
         self.truth_value
     }
-}
-
-/// Converts a cons-list represented as nested Ground terms with functor '.' into a Rust vector of Values.
-pub fn flatten_list(value: &engine::Value) -> Option<Vec<engine::Value>> {
-    let mut result = Vec::new();
-    let mut current = value;
-
-    while let engine::Value::Ground(functor, args) = current {
-        if let engine::Value::Ground(functor, args) = current
-            && functor == "nil"
-            && args.is_empty()
-        {
-            return Some(result); // Successfully reached the end of the list
-        }
-
-        if functor != "." || args.len() != 2 {
-            return None; // Not a valid cons cell
-        }
-
-        result.push(args[0].clone()); // Head of the list
-
-        current = &args[1]; // Move to the tail
-    }
-
-    None // Not a valid list
 }
 
 /// A Mini-Prolog program, on which queries can be executed.
@@ -196,21 +305,10 @@ impl Program {
             }
         }
 
-        let mut solutions = Vec::new();
-
-        for engine_solution in engine_solutions {
-            let mut bindings = Vec::new();
-            for var in &vars {
-                if let Some(value) = engine_solution.get(var) {
-                    bindings.push((var.clone(), value.clone()));
-                }
-            }
-
-            solutions.push(Solution {
-                bindings,
-                truth_value: engine_solution.truth_value(),
-            });
-        }
+        let solutions = engine_solutions
+            .into_iter()
+            .map(|solution| Solution::from_engine_solution(&solution, &vars))
+            .collect::<Vec<_>>();
 
         Ok(solutions)
     }
@@ -275,9 +373,9 @@ path(A, B) :- edge(A, X), path(X, B).
             .expect("query should execute");
 
         let has_d = solutions.iter().any(|solution| {
-            solution.bindings().iter().any(|(var, val)| {
-                var.name() == "X" && matches!(val, engine::Value::Ground(functor, args) if functor == "d" && args.is_empty())
-            })
+            solution
+                .get("X")
+                .is_some_and(|value| matches!(value, Value::Atom(ref s) if s == "d"))
         });
 
         assert!(has_d, "expected path(a, X) to include X = d");

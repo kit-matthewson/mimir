@@ -15,6 +15,10 @@ pub enum MimirError {
     Translation(#[from] TranslationError),
     #[error("{0}")]
     Engine(#[from] EngineError),
+    #[error("invalid cons list structure")]
+    InvalidListStructure,
+    #[error("invalid value type: expected {0}")]
+    InvalidValueType(String),
 }
 
 /// An error that may occur during parsing.
