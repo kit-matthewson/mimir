@@ -16,12 +16,57 @@ struct TranslationState {
     wildcard_counter: usize,
 }
 
+impl TranslationState {
+    /// Create a new translation state with counters initialized to zero.
+    fn new() -> Self {
+        TranslationState {
+            temp_var_counter: 0,
+            wildcard_counter: 0,
+        }
+    }
+
+    /// Generate a new temporary variable name and increment the counter.
+    fn new_temp_var(&mut self) -> engine::Variable {
+        let var_name = format!("_T{}", self.temp_var_counter);
+        self.temp_var_counter += 1;
+        engine::Variable::new(var_name)
+    }
+
+    /// Generate a new wildcard variable name and increment the counter.
+    fn new_wildcard_var(&mut self) -> engine::Variable {
+        let var_name = format!("_W{}", self.wildcard_counter);
+        self.wildcard_counter += 1;
+        engine::Variable::new(var_name)
+    }
+
+    /// Creates an iterator over temporary variable names.
+    fn temp_var_names(&self) -> impl Iterator<Item = String> + '_ {
+        (0..self.temp_var_counter).map(|i| format!("_T{}", i))
+    }
+
+    /// Creates an iterator over wildcard variable names.
+    fn wildcard_var_names(&self) -> impl Iterator<Item = String> + '_ {
+        (0..self.wildcard_counter).map(|i| format!("_W{}", i))
+    }
+
+    /// Return the current count of temporary variables generated.
+    // Currently only used in tests
+    #[allow(dead_code)]
+    fn temp_var_count(&self) -> usize {
+        self.temp_var_counter
+    }
+
+    /// Return the current count of wildcard variables generated.
+    // Currently only used in tests
+    #[allow(dead_code)]
+    fn wildcard_count(&self) -> usize {
+        self.wildcard_counter
+    }
+}
+
 /// Translates a single AST clause into the internal engine representation.
 pub fn translate_clause(clause: ast::Clause) -> Result<engine::Clause, TranslationError> {
-    let mut state = TranslationState {
-        temp_var_counter: 0,
-        wildcard_counter: 0,
-    };
+    let mut state = TranslationState::new();
 
     // Normalise head by replacing non-variable terms with temp variables and generating unification goals
     let (params, head_unification_goals) = translate_clause_head(&clause.head, &mut state)?;
@@ -39,8 +84,8 @@ pub fn translate_clause(clause: ast::Clause) -> Result<engine::Clause, Translati
         });
 
     // Create local and wild variable names for the clause
-    let temp_vars = (0..state.temp_var_counter).map(|i| format!("_T{}", i));
-    let wildcard_vars = (0..state.wildcard_counter).map(|i| format!("_W{}", i));
+    let temp_vars = state.temp_var_names();
+    let wildcard_vars = state.wildcard_var_names();
 
     let param_names: HashSet<String> = params.iter().map(|v| v.name().to_string()).collect();
 
@@ -82,16 +127,13 @@ pub fn translate_clause(clause: ast::Clause) -> Result<engine::Clause, Translati
 
 /// Translate a query (goal) from an AST goal to an engine query.
 pub fn translate_query(query: ast::Goal) -> Result<engine::Query, TranslationError> {
-    let mut state = TranslationState {
-        temp_var_counter: 0,
-        wildcard_counter: 0,
-    };
+    let mut state = TranslationState::new();
 
     let goal = translate_goal(&query, &mut state)?;
 
     let goal_vars = collect_body_variables(&[query]);
-    let temp_vars = (0..state.temp_var_counter).map(|i| format!("_T{}", i));
-    let wildcard_vars = (0..state.wildcard_counter).map(|i| format!("_W{}", i));
+    let temp_vars = state.temp_var_names();
+    let wildcard_vars = state.wildcard_var_names();
 
     let local_vars: Vec<engine::Variable> = temp_vars
         .chain(wildcard_vars)
@@ -119,13 +161,10 @@ fn translate_clause_head(
                     ast::Variable::Var(name) => {
                         if let Some(existing) = seen_head_vars.get(name) {
                             // For repeated head variables use a fresh parameter and add unification goal to unify with the first occurrence
-                            let temp_var = format!("_T{}", state.temp_var_counter);
-                            state.temp_var_counter += 1;
-                            let temp_engine_var = engine::Variable::new(&temp_var);
-
-                            params.push(temp_engine_var.clone());
+                            let temp_var = state.new_temp_var();
+                            params.push(temp_var.clone());
                             unification_goals
-                                .push(engine::Goal::Equivalence(temp_engine_var, existing.clone()));
+                                .push(engine::Goal::Equivalence(temp_var, existing.clone()));
                         } else {
                             let engine_var = engine::Variable::new(name.clone());
                             params.push(engine_var.clone());
@@ -134,24 +173,20 @@ fn translate_clause_head(
                     }
                     ast::Variable::Wildcard => {
                         // Each wildcard gets a unique variable
-                        let wildcard_var = format!("_W{}", state.wildcard_counter);
-                        state.wildcard_counter += 1;
-                        params.push(engine::Variable::new(wildcard_var));
+                        let wildcard_var = state.new_wildcard_var();
+                        params.push(wildcard_var);
                     }
                 }
             }
             _ => {
-                // Non-variable terms: create a temp variable and add unification goal
-                let temp_var = format!("_T{}", state.temp_var_counter);
-                state.temp_var_counter += 1;
-                let temp_engine_var = engine::Variable::new(&temp_var);
-
-                params.push(temp_engine_var.clone());
+                // Non-variable terms need a temp variable and unification goal
+                let temp_var = state.new_temp_var();
+                params.push(temp_var.clone());
 
                 // Convert the term to an RHSTerm and create any nested assignment goals first
                 let (rhs_term, mut rhs_goals) = term_to_rhs_term(param, state)?;
                 unification_goals.append(&mut rhs_goals);
-                unification_goals.push(engine::Goal::Assign(temp_engine_var, rhs_term));
+                unification_goals.push(engine::Goal::Assign(temp_var, rhs_term));
             }
         }
     }
@@ -254,8 +289,7 @@ fn translate_goal(
 
 /// Convert a term used in a relation to a variable.
 ///
-/// If the term is not already a variable, this allocates a temporary variable
-/// and emits an assignment goal so the relation can reference that variable.
+/// If the term is not already a variable, this allocates a temporary variable and emits an assignment goal so the relation can reference that variable.
 fn term_to_variable_for_relation(
     term: &ast::Term,
     state: &mut TranslationState,
@@ -263,16 +297,13 @@ fn term_to_variable_for_relation(
     match term {
         ast::Term::Var(var) => Ok((ast_variable_to_engine(var, state), vec![])),
         _ => {
-            let temp_var = format!("_T{}", state.temp_var_counter);
-            state.temp_var_counter += 1;
-
-            let temp_engine_var = engine::Variable::new(&temp_var);
+            let temp_var = state.new_temp_var();
             let (rhs_term, mut pre_goals) = term_to_rhs_term(term, state)?;
-            let assign_goal = engine::Goal::Assign(temp_engine_var.clone(), rhs_term);
+            let assign_goal = engine::Goal::Assign(temp_var.clone(), rhs_term);
 
             pre_goals.push(assign_goal);
 
-            Ok((temp_engine_var, pre_goals))
+            Ok((temp_var, pre_goals))
         }
     }
 }
@@ -297,15 +328,12 @@ fn desugar_list_to_term(list: &ast::ListTerm) -> ast::Term {
 fn ast_variable_to_engine(var: &ast::Variable, state: &mut TranslationState) -> engine::Variable {
     match var {
         ast::Variable::Var(name) => engine::Variable::new(name.clone()),
-        ast::Variable::Wildcard => {
-            let wildcard_var = format!("_W{}", state.wildcard_counter);
-            state.wildcard_counter += 1;
-            engine::Variable::new(wildcard_var)
-        }
+        ast::Variable::Wildcard => state.new_wildcard_var(),
     }
 }
 
 /// Convert an AST term to an engine RHSTerm and generate any necessary pre-goals.
+/// This is used throughout the translation to handle non-variable terms in the head and body
 ///
 /// Lists are desugared to cons structures inline during this conversion.
 fn term_to_rhs_term(
@@ -688,10 +716,7 @@ mod tests {
             ],
         };
 
-        let mut state = TranslationState {
-            temp_var_counter: 0,
-            wildcard_counter: 0,
-        };
+        let mut state = TranslationState::new();
 
         let (params, goals) = translate_clause_head(&head, &mut state).unwrap();
 
@@ -717,16 +742,13 @@ mod tests {
                 ),
             ]
         );
-        assert_eq!(state.temp_var_counter, 2);
-        assert_eq!(state.wildcard_counter, 1);
+        assert_eq!(state.temp_var_count(), 2);
+        assert_eq!(state.wildcard_count(), 1);
     }
 
     #[test]
     fn term_to_variable_for_relation_creates_assignment_for_atom() {
-        let mut state = TranslationState {
-            temp_var_counter: 0,
-            wildcard_counter: 0,
-        };
+        let mut state = TranslationState::new();
 
         let (var, pre_goals) = term_to_variable_for_relation(
             &ast::Term::Atom(ast::Atom {
@@ -744,7 +766,7 @@ mod tests {
                 engine::RHSTerm::Sym(engine::Symbol::new("foo", vec![], vec![])),
             )]
         );
-        assert_eq!(state.temp_var_counter, 1);
+        assert_eq!(state.temp_var_count(), 1);
     }
 
     #[test]
@@ -760,10 +782,7 @@ mod tests {
             ),
         ];
 
-        let mut state = TranslationState {
-            temp_var_counter: 0,
-            wildcard_counter: 0,
-        };
+        let mut state = TranslationState::new();
 
         let translated = translate_clause_body(&body, &None, &mut state).unwrap();
 
@@ -784,10 +803,7 @@ mod tests {
 
     #[test]
     fn term_to_rhs_term_preserves_explicit_list_tail() {
-        let mut state = TranslationState {
-            temp_var_counter: 0,
-            wildcard_counter: 0,
-        };
+        let mut state = TranslationState::new();
 
         let term = ast::Term::List(ast::ListTerm {
             items: vec![ast::Term::Var(ast::Variable::Var("H".to_string()))],
