@@ -7,8 +7,6 @@ use crate::{engine, error::TranslationError, parser::ast};
 use std::collections::{HashMap, HashSet};
 
 /// Translation state for managing unique variable names.
-///
-/// TODO: Should have a function for generating new temp/wildcard variables and incrementing the counter
 struct TranslationState {
     /// Counter for generating unique temporary variable names.
     temp_var_counter: usize,
