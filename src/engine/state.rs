@@ -1,9 +1,6 @@
 //! State management for the execution engine.
 //!
 //! This includes the representation of goals and choices, as well as the environment, clause database, and equivalence relations.
-//!
-//! # TODO
-//! - Consider combining `Environment` and `Equivalence`
 
 use std::collections::HashMap;
 

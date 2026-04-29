@@ -15,6 +15,12 @@
     This dissertation explores the design and implementation of a Mini-Prolog interpreter in Rust. The project is motivated by the rise of large language models (LLMs) and the need for explainable AI (XAI) systems that can provide formal guarantees and explanations for their outputs. Based on Dewey and Hardekopf's specification for Mini-Prolog, the interpreter implements a core subset of Prolog, omitting features like cut and meta-programming to simplify implementation.
 
     Rust was chosen for its modern features, performance, and safety guarantees. The architecture comprises a parser, a translator to an internal syntax, and an execution engine. The parser is implemented using the _nom_ combinator library, while the engine follows a stack-based execution model.
+
+    The standard, crisp, Prolog implementation was then extended to support fuzzy logic, allowing predicates to be evaluated with degrees of truth rather than boolean values. This extension required significant modifications to the engine, including a switch to a recursive execution model in order to handle different backtracking behaviour.
+
+    The resulting implementation was tested and verified against a variety of Prolog programs, demonstrating its correctness and the successful integration of fuzzy logic capabilities.
+
+    This project contributes to the field of logic programming by providing a clear and well-documented implementation of a Prolog engine in Rust, as well as an extension to support fuzzy logic. It serves as a valuable learning tool for those interested in Prolog and logic programming, and provides a foundation for further exploration and development in this area.
   ],
   table-of-contents: outline(),
 )
@@ -200,7 +206,7 @@ allLess(V1, T1) {V2, Rest, T2} :-
 ```
 
 == High-Level Architecture
-The design consists of three parts: a parser to generate an abstract syntax tree (AST) from user-facing syntax, a translator to convert the user-facing syntax to the internal syntax, and an engine to execute the program using the syntax tree of the internal syntax. Each of these parts will be implemented as separate Rust modules, with clear interfaces between them.
+The design consists of three parts: a parser to generate an abstract syntax tree (AST) from user-facing syntax, a translator to convert the user-facing syntax to the internal syntax, and an engine to execute the program using the syntax tree of the internal syntax.
 
 The parser will be written using _nom_, a popular parser combinator library in Rust @nom_github. This will be used to generate an abstract syntax tree representing the user-facing syntax. Ivan Bratko's _Prolog_ @bratko_prolog_1990 will be used as reference for Prolog's syntax.
 
@@ -212,7 +218,7 @@ These three components are separated into Rust modules, with clear interfaces be
 
 This design is chosen to meet the identified user requirements and success criteria. The use of Rust ensures the implementation is in a modern language with good performance and safety guarantees. The use of _nom_ allows for a clear and maintainable parser, while the use of a translator to an internal syntax provides clear separation of concerns and simplifies the engine implementation.
 
-The engine structure defined by Dewey and Hardekopf is chosen for its simplicity, which is appropriate for this project given the focus on understanding and correctness over performance.
+Extending the design to support fuzzy logic requires modifications of all three components, including a significant redesign of the engine to handle the modified execution model.
 
 == Parser Design
 Using the _nom_ library, the parser will be implemented as a series of combinators that match the grammar of Mini-Prolog. The grammar will be based on the standard Prolog syntax as given in Bratko's _Prolog_ @bratko_prolog_1990, with adjustments to fit the Mini-Prolog subset defined by Dewey and Hardekopf @dewey_mini.
@@ -245,7 +251,7 @@ let (_, clause) = ast::Clause::parse(input).unwrap();
 
 assert_eq!(clause.to_string(), input);
 ```
-Nom allows 'context' to be added whilst parsing. When parsing a pair of brackets we can attach this context so that syntax error messages can provide more useful information on what caused them.
+Nom allows 'context' to be added whilst parsing. Context is added to parsing steps such as a node surrounded by brackets. If an error occurs, for example if a closing bracket is missing, this context is included in the error message, making it easier for users to understand what went wrong and how to fix it.
 
 Each parsing function will be thoroughly tested with a variety of valid and invalid input to ensure it behaves as expected and provides helpful feedback to users. They will also be documented with example usage, which are also tested with `cargo test` to ensure they remain correct.
 
@@ -270,12 +276,12 @@ An internal clause technically only has one goal, which is produced by folding m
 
 Wildcard variables (represented by variables starting with an underscore in the user-facing syntax) are replaced with new, arbitrary, variables. Because these variables are ensured to be unique, they will unify with any term and so can be used in place of wildcards without requiring any special handling by the engine.
 
-Throughtout the translation process, a state is maintained to keep track of new local and wildcard variables. This ensures that all the translation functions can generate new variables without needing to worry about name clashes.
+Throughout the translation process, a state is maintained to keep track of new local and wildcard variables. This ensures that all the translation functions can generate new variables without needing to worry about name clashes.
 
 Once all of the goals have been translated, a final pass of the full body is completed to collect a list of the local variables used in the body, which is added to the clause alongside the head.
 
 == Crisp Engine Design
-The design for the crisp (standard) Prolog engine is based on the specification given by Dewey and Hardekopf @dewey_mini. This design is chosen for its simplicity, which is appropriate for this project given the focus on understanding and correctness over performance.
+The design for the crisp (standard) Prolog engine is based on the specification given by Dewey and Hardekopf @dewey_mini. This design is chosen for its simplicity, which is appropriate for this project given the focus on understanding and correctness over performance. Modifications to this design were made to better utilise Rust's features, such as pattern matching and the type system.
 
 The goal of the engine is to take a Mini-Prolog program and query and find a satisfying assignment of variables in the query (if one exists). The engine will attempt to find different solutions until it has found all of them.
 
@@ -301,7 +307,7 @@ The goal stack is fundamental to the execution of Prolog queries. To execute a q
 
 In Dewey and Hardekopf's implementation, as well as goals, the goal stack also contains _restoration points_. These allow for local variables within clauses. When evaluating a check expression in the body of a clause, which requires entering new clauses, a restoration point is pushed onto the goal stack containing the current environment of the engine. A new environment can then be generated for the execution of the check expression. Because the restoration point is pushed before the goal of the check expression, the original environment will be restored after the check expression has been evaluated, ensuring that variables in the original environment are not unified with values in the new environment.
 
-When a disjunction is encountered, either through a clause with multiple definitions or through the `;` operator, a choice point is pushed onto the choice stack. This allows the engine to backtrack and try alternative paths if the current path fails..
+When a disjunction is encountered, either through a clause with multiple definitions or through the `;` operator, a choice point is pushed onto the choice stack. This allows the engine to backtrack and try alternative paths if the current path fails.
 
 Choice points are represented as tuples of the goal that should be tried alongside the environment, equivalences, and goal stack to be restored.
 
@@ -732,7 +738,21 @@ The extension of Prolog to support fuzzy logic is an area that could be explored
   outlined: false,
 )
 
+
 #heading(numbering: none)[Appendices]
+== Project Structure and Usage
+Rust projects have a standard structure, with source code in a `src` directory, with the entry point for the executable in `src/main.rs` and the library code in `src/lib.rs`. The `Cargo.toml` file is used to manage dependencies and project metadata. I chose the name 'Mimir' for the project, a relevant character from Norse mythology.
+
+In `main.rs` you will find a simple command-line interface for loading Prolog programs from files and executing queries. This CLI uses the library code in `lib.rs` to do this. Someone using the project as a library in their own Rust code would use it in the same way as the CLI does, by calling the relevant functions from `lib.rs`.
+
+Rust code can be organised into modules, which are defined by creating a new file in the `src` directory and declaring it as a module in `lib.rs`. For example, the `parser` module is defined in `src/parser.rs` and declared in `lib.rs` with `mod parser;`. Additional files in the same module can be created in a subdirectory with the same name as the module, for example `src/parser/ast.rs` is part of the `parser` module.
+
+Tests can be defined in any Rust file by using the `#[cfg(test)]` attribute to create a test module. Tests can also be placed in the `tests` directory, which is a special directory for integration tests. These tests are compiled as separate executables and can use the library as an external crate, which allows for testing the public API of the library. All of the tests can be run with `cargo test`.
+
+The `examples` directory contains Prolog programs that can be loaded and executed with the CLI, as well as standalone Rust programs that demonstrate the use of the library. To execute the engine with one of the example programs, you can run `cargo run examples/<program_name>.pl`. To run one of the Rust example programs, you can run `cargo run --example <program_name>`.
+
+The documentation for the project can be generated and opened with `cargo doc --open`. This uses `rustdoc` to generate HTML documentation from the Markdown comments in the source code.
+
 == Project Gantt Chart <appendix:gantt>
 A Gantt chart for this project is given in @fig:gantt.
 

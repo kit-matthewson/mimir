@@ -1,10 +1,6 @@
 # Mimir
 
-> Mimir is a figure from Norse mythology renowned for his wisdom and knowledge. After being beheaded during the Aesir-Vanir war, Odin preserves his head and consults it for advice.
-
-This project is a Rust implementation of Mini-Prolog, completed for a Computer Science dissertation at the University of Exeter. Project documentation is hosted [here](https://kit-matthewson.github.io/mimir).
-
-This repository also includes, under the `report` directory, the project report written in [Typst](https://typst.app/).
+> Mimir is a figure from Norse mythology renowned for his wisdom and knowledge. Odin preserved his severed head and queried it for advice and insight.
 
 ## Scope
 Mimir implements Mini-Prolog, a simplified version of Prolog from [Kyle Dewey and Ben Hardekopf](https://kyledewey.github.io/cs162w15/handouts/handout7-miniprolog.pdf).
@@ -20,11 +16,13 @@ Mimir executes Mini-Prolog programs by:
 3. Executing queries against the internal representation using a backtracking algorithm.
 
 ## Building and Running
-To use Mimir, ensure you have Rust installed. Then, clone the repository and use Cargo to build and run the project:
+To use Mimir, ensure you have Rust installed (from [rust-lang.org](https://rust-lang.org/tools/install/)). Then, clone the repository and use Cargo to build and run the project:
 
 ```
-cargo run
+cargo run <path-to-prolog-file>
 ```
+
+There are some example Prolog files in the `examples` directory that you can use to test the interpreter.
 
 ### Testing
 Mimir includes a thorough test suite of unit and integration tests, as well as [documentation tests](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html) to verify examples in the documentation.
@@ -45,7 +43,6 @@ cargo install just
 Then, you can run the tasks defined in the `justfile`:
 - `just run` - Runs the main program.
 - `just check` - Runs all code checks including formatting and linting.
-- `just make-pdfs` - Generate PDFs for the project report, logbook, and poster.
 
 ## Example
 A program such as:

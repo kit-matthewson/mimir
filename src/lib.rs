@@ -2,6 +2,8 @@
 //!
 //! Mimir is a Mini-Prolog interpreter written in Rust, extended with support for fuzzy logic.
 //!
+//! > Mimir is a figure from Norse mythology renowned for his wisdom and knowledge. Odin preserved his severed head and queried it for advice and insight.
+//!
 //! - Facts and rules can be written with standard Prolog syntax.
 //! - Fuzzy rules can be defined using `:~` instead of `:-`, and the last goal in the body is treated as a 'truth expression', evaluated to a float and used as the truth value of the clause.
 //!
@@ -71,7 +73,7 @@
 
 pub mod engine;
 pub mod error;
-mod macros;
+pub mod macros;
 pub mod parser;
 pub mod translator;
 

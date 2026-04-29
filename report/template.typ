@@ -125,9 +125,7 @@
           [
             _I certify that all material in this dissertation that is not my own work has been identified._
 
-            #v(.7em)
-
-            Signature: #box(stroke: (bottom: .4pt), width: 5cm, height: 0cm)
+            Signed: #box(stroke: (bottom: .4pt), width: 5cm, inset: 2pt)[#text(font: "Lucida Handwriting", size: .8em)[Kit Matthewson]]
           ],
         )
       ],
