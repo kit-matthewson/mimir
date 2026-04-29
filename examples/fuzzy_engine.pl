@@ -21,9 +21,9 @@ not(X, Y) :-
   Y = 1 - X.
 
 cold(T, F) :-
-  trap(T, -100, -100, 12, 15, F).
+  trap(T, -100, -100, 15, 17, F).
 hot(T, F) :-
-  trap(T, 22, 28, 100, 100, F).
+  trap(T, 17, 28, 100, 100, F).
 
 heating(on, T) :~
   cold(T, F),

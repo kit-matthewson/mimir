@@ -207,10 +207,12 @@ impl Solution {
             }
         }
 
-        let bindings = engine_bindings
+        let mut bindings = engine_bindings
             .into_iter()
             .map(|(var, value)| (var.name().to_string(), Value::from(value)))
             .collect::<Vec<_>>();
+
+        bindings.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
 
         Solution {
             bindings,

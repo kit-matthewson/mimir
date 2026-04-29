@@ -3,6 +3,13 @@ name = "mimir"
 version = "0.1.0"
 edition = "2024"
 
+[[example]]
+name = "fuzzy_engine"
+
+[dev-dependencies]
+egui = "0.34"
+eframe = "0.34"
+
 [dev-dependencies.cargo-husky]
 version = "1"
 default-features = false
